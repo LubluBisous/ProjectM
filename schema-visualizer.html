@@ -189,6 +189,7 @@
   .relation-line.rel-selected { stroke: #7c8cf8; stroke-width: 2.5; }
   .relation-hit { stroke: transparent; stroke-width: 14; fill: none; cursor: pointer; pointer-events: all; }
   .relation-marker { fill: #4a5568; }
+  #rel-ctx-edit-btn:hover, #rel-ctx-view-btn:hover { background:#252840; color:#e2e8f0; }
 
   /* ── MODAL ── */
   .modal-overlay {
@@ -1067,6 +1068,12 @@
   body.light .add-field-row { color:#9098b8; border-top-color:#c8d0ea; }
   body.light .add-field-row:hover { color:#5b6ad8; background:#f0f4ff; }
   body.light .relation-line { stroke:#a0aac8; }
+  body.light #relation-ctx-menu { background:#ffffff; border-color:#c8d0ea; box-shadow:0 8px 28px rgba(0,0,0,.15); }
+  body.light #rel-ctx-info { border-bottom-color:#e8ecf8; }
+  body.light #rel-ctx-edit-btn,
+  body.light #rel-ctx-view-btn { color:#4a5568; border-top-color:#e8ecf8; }
+  body.light #rel-ctx-edit-btn:hover,
+  body.light #rel-ctx-view-btn:hover { background:#f0f4ff; color:#5b6ad8; }
   /* modals */
   body.light .modal { background:#ffffff; border-color:#c8d0ea; box-shadow:0 20px 60px rgba(0,0,0,.12); }
   body.light .modal h2 { color:#5b6ad8; }
@@ -1722,9 +1729,10 @@ document.addEventListener('DOMContentLoaded', () => {
   loadFromStorage();
   renderSchemaList();
   setupClaudeLogo();
+  _initRelMenu();
   document.addEventListener('click', closeContextMenu);
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { closeAllModals(); closeContextMenu(); }
+    if (e.key === 'Escape') { closeAllModals(); closeContextMenu(); hideRelMenu(); }
     if (e.key === 'Delete' && selectedTable && currentTab === 'schema') deleteTable(selectedTable);
   });
 });
@@ -2074,35 +2082,49 @@ function renderRelations() {
     const hit = document.createElementNS('http://www.w3.org/2000/svg','path');
     hit.setAttribute('d', d);
     hit.setAttribute('class','relation-hit');
+    // Desktop : clic gauche → menu, clic droit → édition directe
     hit.addEventListener('click', e => {
       e.stopPropagation();
-      openEditRelationModal(idx);
+      showRelMenu(e.clientX, e.clientY, idx);
     });
     hit.addEventListener('contextmenu', e => {
       e.preventDefault();
+      e.stopPropagation();
       openEditRelationModal(idx);
     });
-    // Hover: highlight visible path (desktop)
+    // Hover desktop
     hit.addEventListener('mouseenter', () => { if (idx !== _selectedRelIdx) path.setAttribute('class','relation-line rel-selected'); });
     hit.addEventListener('mouseleave', () => { if (idx !== _selectedRelIdx) path.setAttribute('class','relation-line'); });
-    // Long press: mobile
-    let _lpTimer = null;
+    // Mobile : tap court → menu, appui long → édition directe
+    let _lpTimer = null, _lpDone = false, _tX = 0, _tY = 0;
     hit.addEventListener('touchstart', e => {
       e.stopPropagation();
+      _tX = e.touches[0].clientX; _tY = e.touches[0].clientY;
+      _lpDone = false;
       path.setAttribute('class','relation-line rel-selected');
       _lpTimer = setTimeout(() => {
-        _lpTimer = null;
+        _lpTimer = null; _lpDone = true;
         if (navigator.vibrate) navigator.vibrate(40);
         openEditRelationModal(idx);
-      }, 500);
+      }, 600);
     }, { passive: true });
-    const _cancelLp = () => {
+    hit.addEventListener('touchend', e => {
+      const hadTimer = !!_lpTimer;
+      if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; }
+      if (!_lpDone && hadTimer) {
+        e.preventDefault(); // empêche le click suivant
+        showRelMenu(_tX, _tY, idx);
+      }
+      if (idx !== _selectedRelIdx) path.setAttribute('class','relation-line');
+    }, { passive: false });
+    hit.addEventListener('touchmove', () => {
       if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; }
       if (idx !== _selectedRelIdx) path.setAttribute('class','relation-line');
-    };
-    hit.addEventListener('touchend',    _cancelLp, { passive: true });
-    hit.addEventListener('touchmove',   _cancelLp, { passive: true });
-    hit.addEventListener('touchcancel', _cancelLp, { passive: true });
+    }, { passive: true });
+    hit.addEventListener('touchcancel', () => {
+      if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; }
+      if (idx !== _selectedRelIdx) path.setAttribute('class','relation-line');
+    }, { passive: true });
 
     // Label
     const text = document.createElementNS('http://www.w3.org/2000/svg','text');
@@ -2451,6 +2473,70 @@ function closeEditRelModal() {
   _selectedRelIdx = null;
   closeModal('modal-edit-relation');
   renderRelations();
+}
+
+// ─── MENU CONTEXTUEL RELATION ──────────────────────────────────────────────
+let _relMenuIdx = null;
+
+function showRelMenu(x, y, idx) {
+  _relMenuIdx = idx;
+  const rel = schema.relations[idx];
+  if (!rel) return;
+  const ft = schema.tables.find(t => t.id === rel.fromTable);
+  const tt = schema.tables.find(t => t.id === rel.toTable);
+  const ff = ft?.fields[rel.fromField];
+  const tf = tt?.fields[rel.toField];
+  const typeLabel = rel.type === 'many-to-one' || rel.type === 'MANY_TO_ONE' ? 'N → 1'
+                  : rel.type === 'one-to-many' || rel.type === 'ONE_TO_MANY' ? '1 → N' : '1 → 1';
+
+  document.getElementById('rel-ctx-info').innerHTML =
+    `<span style="color:#7c8cf8;font-weight:600;">${escHtml(ft?.name||'?')}</span>` +
+    `<span style="color:#4a5568;">.</span><span style="color:#63b3ed;">${escHtml(ff?.name||'?')}</span>` +
+    ` <span style="color:#4a5568;">→</span> ` +
+    `<span style="color:#7c8cf8;font-weight:600;">${escHtml(tt?.name||'?')}</span>` +
+    `<span style="color:#4a5568;">.</span><span style="color:#68d391;">${escHtml(tf?.name||'?')}</span>` +
+    `<br><span style="color:#4a5568;font-size:10px;">${typeLabel}</span>`;
+
+  const menu = document.getElementById('relation-ctx-menu');
+  menu.style.display = 'block';
+  const mw = menu.offsetWidth || 210;
+  const mh = menu.offsetHeight || 120;
+  menu.style.left = Math.min(x + 4, window.innerWidth  - mw - 8) + 'px';
+  menu.style.top  = Math.min(y + 4, window.innerHeight - mh - 8) + 'px';
+}
+
+function hideRelMenu() {
+  document.getElementById('relation-ctx-menu').style.display = 'none';
+  _relMenuIdx = null;
+}
+
+function _initRelMenu() {
+  document.getElementById('rel-ctx-edit-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    const idx = _relMenuIdx;
+    hideRelMenu();
+    if (idx !== null) openEditRelationModal(idx);
+  });
+  document.getElementById('rel-ctx-view-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    const idx = _relMenuIdx;
+    hideRelMenu();
+    if (idx === null) return;
+    const rel = schema.relations[idx];
+    if (!rel) return;
+    // Basculer sur l'onglet schéma et ouvrir le détail de la table source
+    if (currentTab !== 'schema') switchTab('schema');
+    showTableDetail(rel.fromTable);
+  });
+  // Fermer en cliquant ailleurs
+  document.addEventListener('click', e => {
+    const menu = document.getElementById('relation-ctx-menu');
+    if (menu.style.display !== 'none' && !menu.contains(e.target)) hideRelMenu();
+  });
+  document.addEventListener('touchstart', e => {
+    const menu = document.getElementById('relation-ctx-menu');
+    if (menu.style.display !== 'none' && !menu.contains(e.target)) hideRelMenu();
+  }, { passive: true });
 }
 
 // ─── CONTEXT MENU ─────────────────────────────────────────────────────────────
@@ -3637,6 +3723,17 @@ function applyExtractedSchema() {
   showToast('✅ ' + (parts.length ? parts.join(' · ') : 'Aucun changement'));
 }
 </script>
+
+<!-- MENU CONTEXTUEL RELATION -->
+<div id="relation-ctx-menu" style="display:none;position:fixed;z-index:3000;background:#1a1d2e;border:1px solid #2d3150;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.65);min-width:200px;overflow:hidden;">
+  <div id="rel-ctx-info" style="padding:9px 14px;font-size:11px;line-height:1.6;border-bottom:1px solid #252840;pointer-events:none;"></div>
+  <button id="rel-ctx-edit-btn" style="display:flex;align-items:center;gap:9px;width:100%;padding:11px 14px;background:none;border:none;color:#a0aec0;text-align:left;cursor:pointer;font-size:13px;font-family:inherit;">
+    <span style="font-size:15px;">✎</span> Modifier la relation
+  </button>
+  <button id="rel-ctx-view-btn" style="display:flex;align-items:center;gap:9px;width:100%;padding:11px 14px;background:none;border:none;color:#a0aec0;text-align:left;cursor:pointer;font-size:13px;font-family:inherit;border-top:1px solid #1e2030;">
+    <span style="font-size:15px;">👁</span> Afficher la table source
+  </button>
+</div>
 
 <!-- Service Worker inline : mise en cache pour fonctionnement hors-ligne -->
 <script>
