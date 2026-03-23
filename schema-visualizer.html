@@ -2082,9 +2082,27 @@ function renderRelations() {
       e.preventDefault();
       openEditRelationModal(idx);
     });
-    // Hover: highlight visible path
+    // Hover: highlight visible path (desktop)
     hit.addEventListener('mouseenter', () => { if (idx !== _selectedRelIdx) path.setAttribute('class','relation-line rel-selected'); });
     hit.addEventListener('mouseleave', () => { if (idx !== _selectedRelIdx) path.setAttribute('class','relation-line'); });
+    // Long press: mobile
+    let _lpTimer = null;
+    hit.addEventListener('touchstart', e => {
+      e.stopPropagation();
+      path.setAttribute('class','relation-line rel-selected');
+      _lpTimer = setTimeout(() => {
+        _lpTimer = null;
+        if (navigator.vibrate) navigator.vibrate(40);
+        openEditRelationModal(idx);
+      }, 500);
+    }, { passive: true });
+    const _cancelLp = () => {
+      if (_lpTimer) { clearTimeout(_lpTimer); _lpTimer = null; }
+      if (idx !== _selectedRelIdx) path.setAttribute('class','relation-line');
+    };
+    hit.addEventListener('touchend',    _cancelLp, { passive: true });
+    hit.addEventListener('touchmove',   _cancelLp, { passive: true });
+    hit.addEventListener('touchcancel', _cancelLp, { passive: true });
 
     // Label
     const text = document.createElementNS('http://www.w3.org/2000/svg','text');
