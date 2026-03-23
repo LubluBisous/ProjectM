@@ -939,6 +939,23 @@
     .btn { padding: 8px 8px; font-size: 10px; }
     #toolbar h1 { display: none; }
   }
+
+  /* ── CLAUDE AI MODAL ── */
+  #claude-preview-wrap { margin-bottom: 10px; }
+  #claude-preview-img { max-height: 180px; max-width: 100%; border-radius: 8px; border: 1px solid #2d3150; display: block; margin: 0 auto; }
+  #claude-result-text { width: 100%; height: 140px; background: #0d0f1a; border: 1px solid #2d3150; border-radius: 6px; color: #68d391; font-family: 'Cascadia Code','Fira Code','Consolas',monospace; font-size: 11px; padding: 10px; outline: none; resize: vertical; }
+  #claude-result-text:focus { border-color: #7c8cf8; }
+  #claude-status { font-size: 12px; color: #718096; margin-top: 8px; min-height: 18px; line-height: 1.5; }
+  #claude-no-key { display:none; padding:10px 14px; background:#2d1a1a; border-radius:8px; font-size:12px; color:#fc8181; margin-bottom:12px; }
+  .claude-photo-label { display:flex; flex-direction:column; align-items:center; gap:8px; padding:20px 16px; background:#0d0f1a; border:2px dashed #2d3150; border-radius:8px; cursor:pointer; transition:border-color .15s; text-align:center; }
+  .claude-photo-label:hover, .claude-photo-label:active { border-color:#7c8cf8; }
+
+  /* ── SETTINGS MODAL ── */
+  #settings-api-key { font-family: monospace; letter-spacing: .04em; }
+  .api-key-hint { font-size: 11px; color: #4a5568; margin-top: 6px; line-height: 1.6; }
+
+  /* ── TOAST ── */
+  #app-toast { position:fixed; bottom:28px; left:50%; transform:translateX(-50%); background:#252840; border:1px solid #4a5568; border-radius:10px; padding:10px 22px; font-size:13px; color:#e2e8f0; z-index:9999; opacity:0; transition:opacity .3s; pointer-events:none; white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -960,7 +977,7 @@
   <!-- Procedures tab buttons -->
   <div id="toolbar-proc" style="display:none;align-items:center;gap:10px;">
     <button class="btn btn-primary" onclick="openAddProcModal()">+ Procédure</button>
-    <button class="btn btn-secondary" onclick="openModal('modal-prompt')" title="Obtenir le prompt à copier dans Claude pour importer une procédure depuis une photo">📋 Prompt Claude</button>
+    <button class="btn btn-secondary" onclick="openClaudeAIModal()" title="Analyser une photo avec Claude IA et importer directement">🤖 Claude IA</button>
     <div class="sep"></div>
     <button class="btn btn-secondary" onclick="exportProcsJSON()">⬇ JSON</button>
     <button class="btn btn-secondary" onclick="exportProcsSQL()">⬇ SQL</button>
@@ -1360,6 +1377,81 @@ FORMAT JSON À RETOURNER (retourne UNIQUEMENT ce JSON brut, sans texte avant ni 
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('modal-import-procs')">Annuler</button>
       <button class="btn btn-primary" onclick="confirmImportProcs()">Importer</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="app-toast"></div>
+
+<!-- MODAL: CLAUDE AI IMPORT -->
+<div class="modal-overlay" id="modal-claude-ai">
+  <div class="modal modal-lg">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+      <h2 style="margin:0;">🤖 Importer via Claude IA</h2>
+      <button class="btn btn-secondary" style="font-size:11px;padding:5px 10px;" onclick="openSettingsModal()" title="Configurer la clé API">⚙ Clé API</button>
+    </div>
+    <div id="claude-no-key">
+      ⚠️ Aucune clé API configurée.
+      <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="closeModal('modal-claude-ai');openSettingsModal();">Configurer maintenant →</button>
+    </div>
+    <!-- Photo picker -->
+    <div class="form-group">
+      <label>Photo de la procédure / requête SQL</label>
+      <label class="claude-photo-label" for="claude-photo-input">
+        <span style="font-size:30px;" id="claude-photo-icon">📷</span>
+        <span style="font-size:12px;color:#a0aec0;">Appuyer pour <strong>prendre une photo</strong> ou choisir depuis la galerie</span>
+        <span style="font-size:11px;color:#4a5568;">JPG, PNG, HEIC…</span>
+        <input type="file" id="claude-photo-input" accept="image/*" capture="environment" style="display:none" onchange="onClaudePhotoChange(this)" />
+      </label>
+    </div>
+    <!-- Preview -->
+    <div id="claude-preview-wrap" style="display:none;">
+      <img id="claude-preview-img" src="" alt="aperçu" />
+    </div>
+    <!-- Status -->
+    <div id="claude-status"></div>
+    <!-- Buttons row -->
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center;">
+      <button id="claude-analyze-btn" class="btn btn-primary" onclick="analyzeWithClaude()" disabled>🔍 Analyser avec Claude</button>
+      <button id="claude-import-btn" class="btn btn-primary" style="display:none;background:#276749;border-color:#276749;" onclick="importClaudeResult()">⬆ Importer le résultat</button>
+      <button class="btn btn-secondary" style="margin-left:auto;" onclick="closeModal('modal-claude-ai')">Fermer</button>
+    </div>
+    <!-- JSON result -->
+    <div id="claude-result-wrap" style="display:none;margin-top:14px;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#4a5568;margin-bottom:6px;">JSON retourné par Claude <span style="font-weight:400;text-transform:none;">(modifiable avant import)</span></div>
+      <textarea id="claude-result-text" spellcheck="false"></textarea>
+    </div>
+    <!-- Fallback hint -->
+    <div style="margin-top:14px;padding:8px 12px;background:#0d0f1c;border-radius:6px;font-size:11px;color:#4a5568;border-left:2px solid #2d3150;">
+      Pas de clé API ? Utilisez le <strong style="color:#a0aec0;cursor:pointer;" onclick="closeModal('modal-claude-ai');openModal('modal-prompt');">mode manuel (Prompt)</strong> pour copier le prompt et envoyer la photo sur claude.ai.
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: SETTINGS (API KEY) -->
+<div class="modal-overlay" id="modal-settings">
+  <div class="modal">
+    <h2>⚙ Paramètres Claude API</h2>
+    <div class="form-group">
+      <label>Clé API Anthropic</label>
+      <input type="password" id="settings-api-key" placeholder="sk-ant-api03-…" autocomplete="off" />
+      <div class="api-key-hint">
+        Obtenez une clé sur <strong style="color:#7c8cf8;">console.anthropic.com</strong><br>
+        La clé est stockée <strong>localement dans votre navigateur</strong>, jamais envoyée ailleurs qu'à l'API Anthropic.
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Modèle Claude</label>
+      <select id="settings-model">
+        <option value="claude-haiku-4-5">Claude Haiku 4.5 — rapide &amp; économique (recommandé)</option>
+        <option value="claude-sonnet-4-6">Claude Sonnet 4.6 — équilibré</option>
+        <option value="claude-opus-4-6">Claude Opus 4.6 — le plus puissant</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-settings')">Annuler</button>
+      <button class="btn btn-primary" onclick="saveSettings()">Enregistrer</button>
     </div>
   </div>
 </div>
@@ -2601,6 +2693,171 @@ function exportProcsSQL() {
   });
   const blob = new Blob([sql], {type:'text/plain'});
   download(blob, 'procedures.sql');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ─── CLAUDE API INTEGRATION ────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── SETTINGS ──────────────────────────────────────────────────────────────
+function openSettingsModal() {
+  document.getElementById('settings-api-key').value = localStorage.getItem('claude_api_key') || '';
+  const modelSel = document.getElementById('settings-model');
+  modelSel.value = localStorage.getItem('claude_model') || 'claude-haiku-4-5';
+  openModal('modal-settings');
+  setTimeout(() => document.getElementById('settings-api-key').focus(), 100);
+}
+
+function saveSettings() {
+  const key = document.getElementById('settings-api-key').value.trim();
+  const model = document.getElementById('settings-model').value;
+  if (key) localStorage.setItem('claude_api_key', key);
+  else localStorage.removeItem('claude_api_key');
+  localStorage.setItem('claude_model', model);
+  closeModal('modal-settings');
+  showToast(key ? '✅ Clé API enregistrée' : '🗑 Clé API supprimée');
+}
+
+function getApiKey()   { return localStorage.getItem('claude_api_key') || ''; }
+function getModel()    { return localStorage.getItem('claude_model') || 'claude-haiku-4-5'; }
+
+// ─── CLAUDE AI MODAL ───────────────────────────────────────────────────────
+let _claudeBase64 = null;
+let _claudeMime   = null;
+
+function openClaudeAIModal() {
+  // Reset state
+  _claudeBase64 = null;
+  _claudeMime   = null;
+  document.getElementById('claude-photo-input').value = '';
+  document.getElementById('claude-preview-wrap').style.display = 'none';
+  document.getElementById('claude-preview-img').src = '';
+  document.getElementById('claude-result-wrap').style.display = 'none';
+  document.getElementById('claude-result-text').value = '';
+  document.getElementById('claude-analyze-btn').disabled = true;
+  document.getElementById('claude-analyze-btn').textContent = '🔍 Analyser avec Claude';
+  document.getElementById('claude-import-btn').style.display = 'none';
+  document.getElementById('claude-status').textContent = '';
+  document.getElementById('claude-photo-icon').textContent = '📷';
+  // Show/hide no-key warning
+  document.getElementById('claude-no-key').style.display = getApiKey() ? 'none' : 'block';
+  openModal('modal-claude-ai');
+}
+
+function onClaudePhotoChange(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const dataUrl = ev.target.result;
+    const [, b64] = dataUrl.split(',');
+    _claudeBase64 = b64;
+    _claudeMime   = file.type || 'image/jpeg';
+    // Preview
+    document.getElementById('claude-preview-img').src = dataUrl;
+    document.getElementById('claude-preview-wrap').style.display = 'block';
+    document.getElementById('claude-photo-icon').textContent = '✅';
+    // Reset result
+    document.getElementById('claude-result-wrap').style.display = 'none';
+    document.getElementById('claude-import-btn').style.display = 'none';
+    document.getElementById('claude-analyze-btn').disabled = false;
+    document.getElementById('claude-status').textContent = '📷 Photo chargée — cliquez sur Analyser';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function analyzeWithClaude() {
+  if (!_claudeBase64) return;
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    closeModal('modal-claude-ai');
+    openSettingsModal();
+    return;
+  }
+
+  const analyzeBtn = document.getElementById('claude-analyze-btn');
+  const status = document.getElementById('claude-status');
+
+  analyzeBtn.disabled = true;
+  analyzeBtn.textContent = '⏳ Envoi à Claude…';
+  status.textContent = '⏳ Analyse en cours, veuillez patienter…';
+  document.getElementById('claude-result-wrap').style.display = 'none';
+  document.getElementById('claude-import-btn').style.display = 'none';
+
+  // Reuse the faithful-copy prompt from the prompt modal
+  const promptText = document.getElementById('prompt-text').textContent.trim();
+  const model = getModel();
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 4096,
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: _claudeMime, data: _claudeBase64 }
+            },
+            { type: 'text', text: promptText }
+          ]
+        }]
+      })
+    });
+
+    if (!resp.ok) {
+      let errMsg = `Erreur HTTP ${resp.status}`;
+      try { const e = await resp.json(); errMsg = e.error?.message || errMsg; } catch(_) {}
+      throw new Error(errMsg);
+    }
+
+    const data = await resp.json();
+    let text = (data.content?.[0]?.text || '').trim();
+
+    // Strip markdown code fences if present
+    const fence = text.match(/```(?:json)?\s*([\s\S]+?)\s*```/);
+    if (fence) text = fence[1].trim();
+
+    document.getElementById('claude-result-text').value = text;
+    document.getElementById('claude-result-wrap').style.display = 'block';
+    document.getElementById('claude-import-btn').style.display = 'inline-flex';
+    status.textContent = '✅ Analyse terminée — vérifiez le JSON ci-dessous puis cliquez sur Importer';
+    analyzeBtn.textContent = '🔄 Relancer';
+    analyzeBtn.disabled = false;
+
+  } catch(err) {
+    status.textContent = '❌ Erreur : ' + err.message;
+    analyzeBtn.textContent = '🔍 Analyser avec Claude';
+    analyzeBtn.disabled = false;
+  }
+}
+
+function importClaudeResult() {
+  const txt = document.getElementById('claude-result-text').value.trim();
+  if (!txt) return;
+  try {
+    mergeProcedures(JSON.parse(txt));
+    closeModal('modal-claude-ai');
+  } catch(e) {
+    alert('JSON invalide : ' + e.message);
+  }
+}
+
+// ─── TOAST ─────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const toast = document.getElementById('app-toast');
+  toast.textContent = msg;
+  toast.style.opacity = '1';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { toast.style.opacity = '0'; }, 2800);
 }
 </script>
 
