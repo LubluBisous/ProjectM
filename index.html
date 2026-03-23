@@ -1,0 +1,2630 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>SQL Schema Visualizer</title>
+
+<!-- PWA / Add to Home Screen -->
+<meta name="theme-color" content="#0f1117">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SQL Schema">
+<meta name="application-name" content="SQL Schema">
+<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22SQL%20Schema%20Visualizer%22%2C%22short_name%22%3A%22SQL%20Schema%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230f1117%22%2C%22theme_color%22%3A%22%230f1117%22%2C%22description%22%3A%22Visualiseur%20de%20sch%C3%A9mas%20SQL%20et%20proc%C3%A9dures%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%2C%253Csvg%2520xmlns%3D%2527http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%2527%2520viewBox%3D%25270%25200%252096%252096%2527%253E%253Crect%2520width%3D%252796%2527%2520height%3D%252796%2527%2520rx%3D%252718%2527%2520fill%3D%25270f1117%2527%2F%253E%253Ctext%2520y%3D%252766%2527%2520x%3D%252716%2527%2520font-size%3D%252756%2527%253E%25E2%259A%25A1%253C%2Ftext%253E%253C%2Fsvg%253E%22%2C%22sizes%22%3A%22any%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #0f1117;
+    color: #e2e8f0;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── TOOLBAR ── */
+  #toolbar {
+    background: #1a1d2e;
+    border-bottom: 1px solid #2d3150;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 100;
+    flex-shrink: 0;
+  }
+  #toolbar h1 { font-size: 15px; font-weight: 700; color: #7c8cf8; margin-right: 10px; }
+  .btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all .15s;
+  }
+  .btn-primary { background: #7c8cf8; color: #fff; }
+  .btn-primary:hover { background: #6675e0; }
+  .btn-secondary { background: #2d3150; color: #a0aec0; }
+  .btn-secondary:hover { background: #3a3f6e; color: #fff; }
+  .btn-danger { background: #e53e3e; color: #fff; }
+  .btn-danger:hover { background: #c53030; }
+  .sep { width: 1px; height: 28px; background: #2d3150; margin: 0 4px; }
+  #zoom-info { font-size: 11px; color: #4a5568; margin-left: auto; }
+
+  /* ── CANVAS ── */
+  #canvas-wrapper {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    cursor: default;
+  }
+  #canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+  #svg-layer {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    overflow: visible;
+  }
+  #tables-layer {
+    position: absolute;
+    top: 0; left: 0;
+    transform-origin: 0 0;
+  }
+
+  /* ── TABLE CARD ── */
+  .table-card {
+    position: absolute;
+    min-width: 220px;
+    background: #1a1d2e;
+    border: 1px solid #2d3150;
+    border-radius: 8px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.5);
+    user-select: none;
+    transition: box-shadow .15s;
+  }
+  .table-card:hover { box-shadow: 0 6px 32px rgba(124,140,248,.2); }
+  .table-card.selected { border-color: #7c8cf8; box-shadow: 0 0 0 2px rgba(124,140,248,.3); }
+
+  .table-header {
+    background: #252840;
+    padding: 8px 12px;
+    border-radius: 8px 8px 0 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: grab;
+  }
+  .table-header:active { cursor: grabbing; }
+  .table-icon { font-size: 14px; }
+  .table-name {
+    font-weight: 700;
+    font-size: 13px;
+    color: #7c8cf8;
+    flex: 1;
+  }
+  .table-actions { display: flex; gap: 4px; opacity: 0; transition: opacity .15s; }
+  .table-card:hover .table-actions { opacity: 1; }
+  .icon-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #4a5568;
+    font-size: 13px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: all .1s;
+  }
+  .icon-btn:hover { background: #3a3f6e; color: #e2e8f0; }
+
+  .fields-list { padding: 4px 0; }
+  .field-row {
+    display: flex;
+    align-items: center;
+    padding: 5px 12px;
+    gap: 8px;
+    font-size: 12px;
+    border-bottom: 1px solid #1e2035;
+    position: relative;
+  }
+  .field-row:last-child { border-bottom: none; }
+  .field-row:hover { background: #1e2035; }
+  .field-badge {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 3px;
+    min-width: 22px;
+    text-align: center;
+  }
+  .badge-pk { background: #744210; color: #f6ad55; }
+  .badge-fk { background: #1a365d; color: #63b3ed; }
+  .badge-uk { background: #276749; color: #68d391; }
+  .badge-empty { background: transparent; min-width: 22px; }
+  .field-name { flex: 1; color: #e2e8f0; font-weight: 500; }
+  .field-type { color: #718096; font-size: 11px; }
+  .field-null { color: #e53e3e; font-size: 10px; margin-left: 2px; }
+  .field-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #4a5568;
+    position: absolute;
+    right: -5px;
+    cursor: crosshair;
+    transition: background .1s;
+  }
+  .field-dot:hover { background: #7c8cf8; }
+  .field-dot.left { right: auto; left: -5px; }
+
+  .add-field-row {
+    padding: 6px 12px;
+    font-size: 11px;
+    color: #4a5568;
+    cursor: pointer;
+    text-align: center;
+    border-top: 1px dashed #2d3150;
+    border-radius: 0 0 8px 8px;
+  }
+  .add-field-row:hover { color: #7c8cf8; background: #1e2035; }
+
+  /* ── SVG LINES ── */
+  .relation-line {
+    stroke: #4a5568;
+    stroke-width: 1.5;
+    fill: none;
+    pointer-events: stroke;
+    cursor: pointer;
+    transition: stroke .15s;
+  }
+  .relation-line:hover { stroke: #7c8cf8; stroke-width: 2.5; }
+  .relation-marker { fill: #4a5568; }
+
+  /* ── MODAL ── */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.7);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: #1a1d2e;
+    border: 1px solid #2d3150;
+    border-radius: 12px;
+    padding: 24px;
+    min-width: 380px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 20px 60px rgba(0,0,0,.8);
+  }
+  .modal h2 { font-size: 16px; color: #7c8cf8; margin-bottom: 20px; }
+  .form-group { margin-bottom: 14px; }
+  .form-group label { display: block; font-size: 12px; color: #a0aec0; margin-bottom: 5px; }
+  .form-group input, .form-group select {
+    width: 100%;
+    padding: 8px 10px;
+    background: #252840;
+    border: 1px solid #2d3150;
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-size: 13px;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .form-group input:focus, .form-group select:focus { border-color: #7c8cf8; }
+  .form-row { display: flex; gap: 10px; }
+  .form-row .form-group { flex: 1; }
+  .checkbox-group { display: flex; gap: 16px; margin-top: 4px; }
+  .checkbox-group label { display: flex; align-items: center; gap: 6px; cursor: pointer; color: #a0aec0; font-size: 12px; }
+  .checkbox-group input[type=checkbox] { width: auto; accent-color: #7c8cf8; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+
+  /* ── CONTEXT MENU ── */
+  #context-menu {
+    display: none;
+    position: fixed;
+    background: #252840;
+    border: 1px solid #2d3150;
+    border-radius: 8px;
+    padding: 4px;
+    z-index: 2000;
+    min-width: 160px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  }
+  .ctx-item {
+    padding: 8px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    border-radius: 5px;
+    color: #e2e8f0;
+  }
+  .ctx-item:hover { background: #3a3f6e; }
+  .ctx-item.danger { color: #fc8181; }
+  .ctx-item.danger:hover { background: #c53030; color: #fff; }
+  .ctx-sep { height: 1px; background: #2d3150; margin: 3px 0; }
+
+  /* ── TOOLTIP ── */
+  #tooltip {
+    display: none;
+    position: fixed;
+    background: #252840;
+    border: 1px solid #2d3150;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 11px;
+    color: #a0aec0;
+    pointer-events: none;
+    z-index: 3000;
+  }
+
+  /* ── MINIMAP ── */
+  #minimap {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    width: 160px;
+    height: 100px;
+    background: rgba(26,29,46,.9);
+    border: 1px solid #2d3150;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  #minimap-canvas { width: 100%; height: 100%; }
+
+  /* ── SCHEMA PANEL ── */
+  #schema-panel {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+  #schema-sidebar {
+    width: 260px;
+    min-width: 200px;
+    border-right: 1px solid #2d3150;
+    display: flex;
+    flex-direction: column;
+    background: #13162b;
+    flex-shrink: 0;
+  }
+  #schema-sidebar-header {
+    padding: 12px 14px;
+    border-bottom: 1px solid #2d3150;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #schema-search {
+    flex: 1;
+    background: #1a1d2e;
+    border: 1px solid #2d3150;
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: #e2e8f0;
+    font-size: 12px;
+    outline: none;
+  }
+  #schema-search:focus { border-color: #7c8cf8; }
+  #schema-table-list { flex: 1; overflow-y: auto; padding: 8px; }
+  #schema-table-list::-webkit-scrollbar { width: 4px; }
+  #schema-table-list::-webkit-scrollbar-thumb { background: #2d3150; border-radius: 2px; }
+
+  .schema-table-item {
+    padding: 10px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    margin-bottom: 4px;
+    border: 1px solid transparent;
+    transition: all .12s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .schema-table-item:hover { background: #1a1d2e; border-color: #2d3150; }
+  .schema-table-item.active { background: #1e2240; border-color: #7c8cf8; }
+  .schema-table-item-icon { color: #7c8cf8; font-size: 14px; flex-shrink: 0; }
+  .schema-table-item-info { flex: 1; min-width: 0; }
+  .schema-table-item-name { font-size: 13px; font-weight: 600; color: #e2e8f0; }
+  .schema-table-item-meta { font-size: 11px; color: #4a5568; margin-top: 2px; }
+
+  #schema-detail {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #schema-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    color: #2d3150;
+  }
+  #schema-empty span { font-size: 40px; }
+  #schema-empty p { font-size: 13px; }
+
+  #schema-view {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #schema-view.active { display: flex; }
+
+  #schema-view-header {
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid #2d3150;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  #schema-view-name {
+    font-size: 18px;
+    font-weight: 700;
+    color: #e2e8f0;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  #schema-view-count { font-size: 12px; color: #4a5568; font-weight: 400; }
+  #schema-view-actions { display: flex; gap: 6px; }
+
+  #schema-view-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+  #schema-view-body::-webkit-scrollbar { width: 4px; }
+  #schema-view-body::-webkit-scrollbar-thumb { background: #2d3150; border-radius: 2px; }
+
+  .schema-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #4a5568;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* fields table */
+  .fields-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .fields-table th {
+    text-align: left; padding: 7px 12px;
+    background: #1a1d2e; color: #4a5568;
+    font-weight: 600; border-bottom: 1px solid #2d3150;
+  }
+  .fields-table th:first-child { border-radius: 6px 0 0 0; }
+  .fields-table th:last-child  { border-radius: 0 6px 0 0; }
+  .fields-table td { padding: 8px 12px; border-bottom: 1px solid #1e2035; vertical-align: middle; }
+  .fields-table tr:last-child td { border-bottom: none; }
+  .fields-table tbody tr:hover td { background: #1a1d2e; }
+  .fields-table tbody tr:hover td:first-child { border-radius: 0 0 0 6px; }
+  .fields-table tbody tr:hover td:last-child  { border-radius: 0 0 6px 0; }
+
+  /* relation cards */
+  .rel-grid { display: flex; flex-direction: column; gap: 8px; }
+  .rel-card {
+    background: #1a1d2e;
+    border: 1px solid #2d3150;
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    transition: border-color .12s;
+    cursor: pointer;
+  }
+  .rel-card:hover { border-color: #7c8cf8; }
+  .rel-card-arrow { font-size: 18px; color: #4a5568; flex-shrink: 0; }
+  .rel-card-body { flex: 1; min-width: 0; }
+  .rel-card-title { font-size: 13px; font-weight: 600; color: #e2e8f0; }
+  .rel-card-title .rel-table { color: #7c8cf8; }
+  .rel-card-fields { font-size: 11px; color: #4a5568; margin-top: 3px; font-family: monospace; }
+  .rel-type-badge {
+    font-size: 10px; font-weight: 700; padding: 2px 7px;
+    border-radius: 4px; background: #252840; color: #a0aec0; flex-shrink: 0;
+  }
+  .rel-card.outgoing .rel-card-arrow { color: #63b3ed; }
+  .rel-card.incoming .rel-card-arrow { color: #68d391; }
+
+  /* ── TABS ── */
+  #tab-bar {
+    background: #13162b;
+    border-bottom: 1px solid #2d3150;
+    display: flex;
+    align-items: flex-end;
+    padding: 0 16px;
+    gap: 2px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 50;
+  }
+  .tab-btn {
+    padding: 8px 20px;
+    font-size: 12px;
+    font-weight: 600;
+    border: none;
+    background: transparent;
+    color: #4a5568;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all .15s;
+    border-radius: 6px 6px 0 0;
+  }
+  .tab-btn:hover { color: #a0aec0; background: #1a1d2e; }
+  .tab-btn.active { color: #7c8cf8; border-bottom-color: #7c8cf8; background: #1a1d2e; }
+
+  /* ── PROCEDURES PANEL ── */
+  #proc-panel {
+    display: none;
+    flex: 1;
+    overflow: hidden;
+    flex-direction: row;
+  }
+  #proc-panel.active { display: flex; }
+
+  #proc-sidebar {
+    width: 280px;
+    min-width: 220px;
+    border-right: 1px solid #2d3150;
+    display: flex;
+    flex-direction: column;
+    background: #13162b;
+    flex-shrink: 0;
+  }
+  #proc-sidebar-header {
+    padding: 10px 12px;
+    border-bottom: 1px solid #2d3150;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .sidebar-filter-row {
+    display: flex;
+    gap: 5px;
+  }
+  .sidebar-filter-sel {
+    flex: 1;
+    background: #0d0f1c;
+    color: #a0aec0;
+    border: 1px solid #2d3150;
+    border-radius: 4px;
+    padding: 5px 7px;
+    font-size: 11px;
+    outline: none;
+    cursor: pointer;
+  }
+  .sidebar-filter-sel:focus { border-color: #7c8cf8; }
+  #proc-search {
+    flex: 1;
+    background: #1a1d2e;
+    border: 1px solid #2d3150;
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: #e2e8f0;
+    font-size: 12px;
+    outline: none;
+  }
+  #proc-search:focus { border-color: #7c8cf8; }
+  #proc-list { flex: 1; overflow-y: auto; padding: 8px; }
+  #proc-list::-webkit-scrollbar { width: 4px; }
+  #proc-list::-webkit-scrollbar-track { background: transparent; }
+  #proc-list::-webkit-scrollbar-thumb { background: #2d3150; border-radius: 2px; }
+
+  .proc-item {
+    padding: 10px 12px;
+    border-radius: 7px;
+    cursor: pointer;
+    margin-bottom: 4px;
+    border: 1px solid transparent;
+    transition: all .12s;
+  }
+  .proc-item:hover { background: #1a1d2e; border-color: #2d3150; }
+  .proc-item.active { background: #1e2240; border-color: #7c8cf8; }
+  .proc-item-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e2e8f0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .proc-type-badge {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    text-transform: uppercase;
+  }
+  .type-procedure          { background: #2c4a7c; color: #63b3ed; }
+  .type-requete            { background: #276749; color: #68d391; }
+  .type-ci                 { background: #6b2d2d; color: #fc8181; }
+  .type-excel              { background: #1e5c3a; color: #9ae6b4; }
+  .type-datadictionary     { background: #44337a; color: #d6bcfa; }
+  .type-module_referentiel { background: #744210; color: #fbd38d; }
+  .type-murex              { background: #1a365d; color: #90cdf4; }
+  .type-priceselection     { background: #4a235a; color: #e9d8fd; }
+  .type-id_mdp             { background: #2d3748; color: #e2e8f0; }
+  .proc-item-desc {
+    font-size: 11px;
+    color: #4a5568;
+    margin-top: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .proc-item-meta {
+    display: flex;
+    gap: 8px;
+    margin-top: 5px;
+    font-size: 10px;
+    color: #2d3150;
+  }
+  .proc-meta-tag {
+    background: #1a1d2e;
+    border: 1px solid #2d3150;
+    border-radius: 3px;
+    padding: 1px 5px;
+    color: #4a5568;
+  }
+  /* ── FLAGS ── */
+  .flag-badge {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 10px;
+    display: inline-block;
+    letter-spacing: .3px;
+  }
+  .proc-item-flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 5px;
+  }
+  /* chips dans la vue détail */
+  .flag-chip-view {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: default;
+  }
+  /* chips dans le modal */
+  .flag-chip-edit {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .flag-chip-rm {
+    cursor: pointer;
+    opacity: .65;
+    font-size: 10px;
+    line-height: 1;
+  }
+  .flag-chip-rm:hover { opacity: 1; }
+  #flags-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    min-height: 32px;
+    padding: 5px 8px;
+    background: #0d0f1c;
+    border: 1px solid #2d3150;
+    border-radius: 6px;
+  }
+  #flag-add-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  #flag-new-input {
+    flex: 1;
+    background: #1a1d2e;
+    border: 1px solid #2d3150;
+    border-radius: 4px;
+    padding: 5px 9px;
+    color: #e2e8f0;
+    font-size: 12px;
+    outline: none;
+  }
+  #flag-new-input:focus { border-color: #7c8cf8; }
+  #flag-new-input::placeholder { color: #4a5568; }
+
+  #proc-detail {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #proc-empty {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    color: #2d3150;
+  }
+  #proc-empty span { font-size: 40px; }
+  #proc-empty p { font-size: 13px; }
+
+  #proc-view {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #proc-view.active { display: flex; }
+
+  #proc-view-header {
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid #2d3150;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  #proc-view-title {
+    flex: 1;
+  }
+  #proc-view-name {
+    font-size: 18px;
+    font-weight: 700;
+    color: #e2e8f0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  #proc-view-desc {
+    font-size: 12px;
+    color: #718096;
+    margin-top: 4px;
+  }
+  #proc-view-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+  #proc-view-body { flex: 1; overflow-y: auto; padding: 20px; }
+  #proc-view-body::-webkit-scrollbar { width: 4px; }
+  #proc-view-body::-webkit-scrollbar-thumb { background: #2d3150; border-radius: 2px; }
+
+  .proc-section { margin-bottom: 24px; }
+  .proc-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #4a5568;
+    margin-bottom: 10px;
+  }
+
+  .param-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .param-table th {
+    text-align: left;
+    padding: 6px 10px;
+    background: #1a1d2e;
+    color: #4a5568;
+    font-weight: 600;
+    border-bottom: 1px solid #2d3150;
+  }
+  .param-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid #1e2035;
+    color: #e2e8f0;
+  }
+  .param-table tr:last-child td { border-bottom: none; }
+  .param-mode {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .mode-in  { background: #1a365d; color: #63b3ed; }
+  .mode-out { background: #276749; color: #68d391; }
+  .mode-inout { background: #553c26; color: #f6ad55; }
+
+  .tables-used { display: flex; flex-wrap: wrap; gap: 6px; }
+  .table-tag {
+    background: #1a1d2e;
+    border: 1px solid #2d3150;
+    border-radius: 5px;
+    padding: 4px 10px;
+    font-size: 12px;
+    color: #7c8cf8;
+    cursor: default;
+  }
+  .table-tag:hover { border-color: #7c8cf8; }
+
+  .code-block {
+    background: #0d0f1a;
+    border: 1px solid #2d3150;
+    border-radius: 8px;
+    padding: 16px;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    overflow-x: auto;
+    white-space: pre;
+    color: #e2e8f0;
+  }
+  /* SQL syntax highlight */
+  .sql-kw   { color: #63b3ed; font-weight: 700; }
+  .sql-fn   { color: #68d391; }
+  .sql-str  { color: #f6ad55; }
+  .sql-num  { color: #b794f4; }
+  .sql-cmt  { color: #4a5568; font-style: italic; }
+  .sql-type { color: #fc8181; }
+
+  /* proc modal larger */
+  .modal-lg { max-width: 680px; min-width: 560px; }
+  .modal-lg textarea {
+    width: 100%;
+    background: #0d0f1a;
+    border: 1px solid #2d3150;
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-family: 'Cascadia Code','Fira Code','Consolas',monospace;
+    font-size: 12px;
+    padding: 10px;
+    outline: none;
+    resize: vertical;
+    line-height: 1.6;
+  }
+  .modal-lg textarea:focus { border-color: #7c8cf8; }
+  .param-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+  .param-row input, .param-row select {
+    padding: 5px 8px; background: #0d0f1a; border: 1px solid #2d3150;
+    border-radius: 5px; color: #e2e8f0; font-size: 12px; outline: none;
+  }
+  .param-row input:focus, .param-row select:focus { border-color: #7c8cf8; }
+  .param-row .param-name { flex: 2; }
+  .param-row .param-type { flex: 2; }
+  .param-row .param-mode { flex: 1; }
+  #params-list { margin-bottom: 6px; }
+  .rm-param { background: none; border: none; color: #e53e3e; cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 4px; }
+  .rm-param:hover { background: #3a1a1a; }
+
+  /* ── PHOTO REFERENCE (in modal) ── */
+  #proc-photo-ref {
+    display: none;
+    border: 1px solid #2d3150;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 14px;
+  }
+  #proc-photo-ref-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 12px;
+    background: #0d0f1c;
+    font-size: 11px;
+    color: #718096;
+  }
+  #proc-photo-ref img {
+    display: block;
+    width: 100%;
+    max-height: 220px;
+    object-fit: contain;
+    background: #0d0f1c;
+    cursor: zoom-in;
+  }
+
+  /* ── PHOTO VIEWER MODAL ── */
+  #modal-photo .modal {
+    width: 95%;
+    max-width: 860px;
+    padding: 0;
+    overflow: hidden;
+  }
+  #photo-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid #2d3150;
+    background: #1a1d2e;
+  }
+  #photo-modal-img-wrap {
+    overflow: auto;
+    max-height: 75vh;
+    background: #0d0f1c;
+    text-align: center;
+    padding: 12px;
+  }
+  #photo-modal-img-wrap img { max-width: 100%; border-radius: 6px; }
+
+  /* ── MOBILE BACK BUTTON ── */
+  #mobile-back-btn {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px 0;
+    cursor: pointer;
+    color: #7c8cf8;
+    font-size: 13px;
+    font-weight: 600;
+    flex-shrink: 0;
+    border: none;
+    background: none;
+  }
+  #mobile-back-btn:active { opacity: .7; }
+
+  /* ══════════════════════════════════════
+     RESPONSIVE MOBILE (≤ 768px)
+  ══════════════════════════════════════ */
+  @media (max-width: 768px) {
+    body { overflow: auto; height: auto; min-height: 100dvh; }
+
+    /* Toolbar : labels courts */
+    #toolbar { padding: 6px 10px; gap: 6px; flex-wrap: wrap; }
+    #toolbar h1 { font-size: 13px; }
+    .btn { padding: 7px 10px; font-size: 11px; }
+    .sep { display: none; }
+
+    /* Tab bar */
+    #tab-bar { padding: 0 6px; }
+    .tab-btn { padding: 8px 14px; font-size: 11px; }
+
+    /* Schema panel: colonne */
+    #schema-panel { flex-direction: column !important; height: auto; }
+    #schema-sidebar { width: 100% !important; height: 220px; border-right: none; border-bottom: 1px solid #2d3150; }
+    #schema-detail  { flex: 1; min-height: 300px; }
+
+    /* Proc panel: colonne, mobile navigation */
+    #proc-panel { flex-direction: column !important; height: auto; min-height: calc(100dvh - 120px); }
+    #proc-sidebar {
+      width: 100% !important;
+      height: auto;
+      max-height: calc(100dvh - 120px);
+      border-right: none;
+      border-bottom: 1px solid #2d3150;
+      flex-shrink: 0;
+    }
+    #proc-sidebar.mob-hide { display: none !important; }
+    #proc-detail { display: none; min-height: calc(100dvh - 120px); }
+    #proc-detail.mob-show { display: flex !important; }
+
+    /* Back button visible on mobile */
+    #mobile-back-btn { display: flex; }
+
+    /* Proc items: larger tap */
+    .proc-item { padding: 13px 12px; }
+
+    /* Modal full screen on mobile */
+    .modal { width: 98% !important; min-width: unset !important; max-width: unset !important; max-height: 92dvh; overflow-y: auto; border-radius: 10px; }
+    .modal-lg { width: 98% !important; }
+    #photo-modal-img-wrap { max-height: 55vh; }
+
+    /* Proc view header: stack */
+    #proc-view-header { flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px 14px 10px; }
+    #proc-view-actions { width: 100%; justify-content: flex-end; }
+    #proc-view-name { font-size: 15px !important; }
+
+    /* Sidebar filters stack already (column) */
+    #proc-sidebar-header { padding: 8px 10px; }
+    #proc-search { font-size: 14px; padding: 8px 10px; }
+    .sidebar-filter-sel { font-size: 12px; padding: 7px; }
+  }
+
+  @media (max-width: 480px) {
+    .btn { padding: 8px 8px; font-size: 10px; }
+    #toolbar h1 { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- TOOLBAR -->
+<div id="toolbar">
+  <h1>⬡ SQL Schema</h1>
+  <!-- Schema tab buttons -->
+  <div id="toolbar-schema" style="display:flex;align-items:center;gap:10px;">
+    <button class="btn btn-primary" onclick="openAddTableModal()">+ Table</button>
+    <button class="btn btn-secondary" onclick="openAddRelationModal()">⟶ Relation</button>
+    <div class="sep"></div>
+    <button class="btn btn-secondary" onclick="exportJSON()">⬇ JSON</button>
+    <button class="btn btn-secondary" onclick="exportSQL()">⬇ SQL</button>
+    <button class="btn btn-secondary" onclick="importJSON()">⬆ Import</button>
+    <div class="sep"></div>
+    <button class="btn btn-danger" onclick="clearAll()">✕ Vider</button>
+  </div>
+  <!-- Procedures tab buttons -->
+  <div id="toolbar-proc" style="display:none;align-items:center;gap:10px;">
+    <button class="btn btn-primary" onclick="openAddProcModal()">+ Procédure</button>
+    <button class="btn btn-secondary" onclick="triggerPhotoCapture()" title="Prendre une photo de référence pour saisir une procédure">📷 Photo</button>
+    <div class="sep"></div>
+    <button class="btn btn-secondary" onclick="exportProcsJSON()">⬇ JSON</button>
+    <button class="btn btn-secondary" onclick="exportProcsSQL()">⬇ SQL</button>
+    <button class="btn btn-secondary" onclick="openImportProcsModal()">⬆ Import</button>
+  </div>
+  <!-- Hidden camera/gallery input -->
+  <input type="file" id="photo-capture-input" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoCapture(event)">
+  <span id="zoom-info" style="margin-left:auto;">Zoom: 100% | Tables: 0</span>
+</div>
+
+<!-- TAB BAR -->
+<div id="tab-bar">
+  <button class="tab-btn active" id="tab-schema" onclick="switchTab('schema')">▦ Schéma</button>
+  <button class="tab-btn" id="tab-proc" onclick="switchTab('proc')">⚙ Procédures</button>
+</div>
+
+<!-- SCHEMA PANEL -->
+<div id="schema-panel">
+  <div id="schema-sidebar">
+    <div id="schema-sidebar-header">
+      <input type="text" id="schema-search" placeholder="Rechercher une table..." oninput="filterSchemaTables()" />
+    </div>
+    <div id="schema-table-list"></div>
+  </div>
+  <div id="schema-detail">
+    <div id="schema-empty">
+      <span>▦</span>
+      <p>Sélectionnez une table ou créez-en une nouvelle</p>
+      <button class="btn btn-primary" onclick="openAddTableModal()">+ Nouvelle table</button>
+    </div>
+    <div id="schema-view">
+      <div id="schema-view-header">
+        <div id="schema-view-name">
+          <span>▦</span>
+          <span id="schema-view-name-text"></span>
+          <span id="schema-view-count"></span>
+        </div>
+        <div id="schema-view-actions">
+          <button class="btn btn-secondary" id="schema-add-field-btn">+ Champ</button>
+          <button class="btn btn-secondary" id="schema-edit-btn">✎ Renommer</button>
+          <button class="btn btn-danger"    id="schema-delete-btn">✕</button>
+        </div>
+      </div>
+      <div id="schema-view-body"></div>
+    </div>
+  </div>
+</div>
+
+<!-- PROCEDURES PANEL -->
+<div id="proc-panel">
+  <!-- Sidebar list -->
+  <div id="proc-sidebar">
+    <div id="proc-sidebar-header">
+      <input type="text" id="proc-search" placeholder="🔍 Rechercher..." oninput="filterProcs()" />
+      <div class="sidebar-filter-row">
+        <select id="proc-filter-type" class="sidebar-filter-sel" onchange="filterProcs()">
+          <option value="">Tous les types</option>
+          <option value="PROCEDURE">Procédure</option>
+          <option value="REQUETE">Requête SQL</option>
+          <option value="CI">CI</option>
+          <option value="EXCEL">Excel</option>
+          <option value="DATADICTIONARY">Datadictionary</option>
+          <option value="MODULE_REFERENTIEL">Module Référentiel</option>
+          <option value="MUREX">Murex</option>
+          <option value="PRICESELECTION">Priceselection</option>
+          <option value="ID_MDP">ID et MDP</option>
+        </select>
+        <select id="proc-filter-flag" class="sidebar-filter-sel" onchange="filterProcs()">
+          <option value="">Tous les flags</option>
+        </select>
+      </div>
+    </div>
+    <div id="proc-list">
+      <!-- filled by JS -->
+    </div>
+  </div>
+  <!-- Detail view -->
+  <div id="proc-detail">
+    <div id="proc-empty">
+      <span>⚙</span>
+      <p>Sélectionnez une procédure ou créez-en une nouvelle</p>
+      <button class="btn btn-primary" onclick="openAddProcModal()">+ Nouvelle procédure</button>
+    </div>
+    <div id="proc-view">
+      <button id="mobile-back-btn" onclick="mobileProcBack()">← Liste</button>
+      <div id="proc-view-header">
+        <div id="proc-view-title">
+          <div id="proc-view-name"><!-- filled by JS --></div>
+          <div id="proc-view-desc"><!-- filled by JS --></div>
+        </div>
+        <div id="proc-view-actions">
+          <button class="btn btn-secondary" id="proc-edit-btn">✎ Modifier</button>
+          <button class="btn btn-danger" id="proc-delete-btn">✕</button>
+        </div>
+      </div>
+      <div id="proc-view-body"><!-- filled by JS --></div>
+    </div>
+  </div>
+</div>
+
+<!-- MINIMAP (hidden - canvas removed) -->
+<canvas id="minimap-canvas" width="160" height="100" style="display:none;"></canvas>
+
+<!-- TOOLTIP -->
+<div id="tooltip"></div>
+
+<!-- CONTEXT MENU -->
+<div id="context-menu">
+  <div class="ctx-item" id="ctx-add-field">+ Ajouter un champ</div>
+  <div class="ctx-item" id="ctx-edit-table">✎ Renommer</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item danger" id="ctx-delete-table">✕ Supprimer la table</div>
+</div>
+
+<!-- MODAL: ADD TABLE -->
+<div class="modal-overlay" id="modal-add-table">
+  <div class="modal">
+    <h2>Nouvelle table</h2>
+    <div class="form-group">
+      <label>Nom de la table</label>
+      <input type="text" id="new-table-name" placeholder="ex: users" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-add-table')">Annuler</button>
+      <button class="btn btn-primary" onclick="confirmAddTable()">Créer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ADD FIELD -->
+<div class="modal-overlay" id="modal-add-field">
+  <div class="modal">
+    <h2 id="modal-field-title">Nouveau champ</h2>
+    <input type="hidden" id="field-table-id" />
+    <input type="hidden" id="field-index" />
+    <div class="form-row">
+      <div class="form-group">
+        <label>Nom du champ</label>
+        <input type="text" id="field-name" placeholder="ex: user_id" />
+      </div>
+      <div class="form-group">
+        <label>Type SQL</label>
+        <select id="field-type">
+          <option>INT</option>
+          <option>BIGINT</option>
+          <option>SMALLINT</option>
+          <option>TINYINT</option>
+          <option>DECIMAL(10,2)</option>
+          <option>FLOAT</option>
+          <option>DOUBLE</option>
+          <option>VARCHAR(255)</option>
+          <option>VARCHAR(100)</option>
+          <option>VARCHAR(50)</option>
+          <option>TEXT</option>
+          <option>MEDIUMTEXT</option>
+          <option>CHAR(1)</option>
+          <option>BOOLEAN</option>
+          <option>DATE</option>
+          <option>DATETIME</option>
+          <option>TIMESTAMP</option>
+          <option>TIME</option>
+          <option>JSON</option>
+          <option>UUID</option>
+          <option>ENUM</option>
+          <option>BLOB</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Options</label>
+      <div class="checkbox-group">
+        <label><input type="checkbox" id="field-pk"> Clé primaire (PK)</label>
+        <label><input type="checkbox" id="field-nullable"> Nullable</label>
+        <label><input type="checkbox" id="field-unique"> Unique</label>
+        <label><input type="checkbox" id="field-autoincrement"> Auto-incr.</label>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Description (optionnel)</label>
+      <input type="text" id="field-description" placeholder="ex: Security label" />
+    </div>
+    <div class="form-group">
+      <label>Valeur par défaut (optionnel)</label>
+      <input type="text" id="field-default" placeholder="ex: NULL, 0, NOW()" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-add-field')">Annuler</button>
+      <button class="btn btn-primary" onclick="confirmAddField()">Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ADD RELATION -->
+<div class="modal-overlay" id="modal-add-relation">
+  <div class="modal">
+    <h2>Nouvelle relation</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Table source</label>
+        <select id="rel-from-table" onchange="updateRelFromFields()"></select>
+      </div>
+      <div class="form-group">
+        <label>Champ FK</label>
+        <select id="rel-from-field"></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Table cible</label>
+        <select id="rel-to-table" onchange="updateRelToFields()"></select>
+      </div>
+      <div class="form-group">
+        <label>Champ PK</label>
+        <select id="rel-to-field"></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Type de relation</label>
+      <select id="rel-type">
+        <option value="many-to-one">N → 1 (Many to One)</option>
+        <option value="one-to-one">1 → 1 (One to One)</option>
+        <option value="one-to-many">1 → N (One to Many)</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-add-relation')">Annuler</button>
+      <button class="btn btn-primary" onclick="confirmAddRelation()">Créer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: RENAME TABLE -->
+<div class="modal-overlay" id="modal-rename-table">
+  <div class="modal">
+    <h2>Renommer la table</h2>
+    <input type="hidden" id="rename-table-id" />
+    <div class="form-group">
+      <label>Nouveau nom</label>
+      <input type="text" id="rename-table-name" placeholder="Nom de la table" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-rename-table')">Annuler</button>
+      <button class="btn btn-primary" onclick="confirmRenameTable()">Renommer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: PHOTO VIEWER -->
+<div class="modal-overlay" id="modal-photo">
+  <div class="modal">
+    <div id="photo-modal-header">
+      <span style="font-weight:600;font-size:14px;">📷 Photo de référence</span>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-primary" onclick="openAddProcModalWithPhoto()">+ Créer procédure</button>
+        <button class="btn btn-secondary" onclick="closeModal('modal-photo')">✕</button>
+      </div>
+    </div>
+    <div id="photo-modal-img-wrap">
+      <img id="photo-modal-img" src="" alt="photo" />
+    </div>
+    <div style="padding:8px 16px;font-size:11px;color:#4a5568;text-align:center;background:#1a1d2e;">
+      Consultez la photo et saisissez le SQL dans le formulaire · La photo restera visible comme référence
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ADD / EDIT PROCEDURE -->
+<div class="modal-overlay" id="modal-proc">
+  <div class="modal modal-lg">
+    <h2 id="modal-proc-title">Nouvelle procédure</h2>
+    <!-- Photo reference (shown when opened from camera) -->
+    <div id="proc-photo-ref">
+      <div id="proc-photo-ref-bar">
+        <span>📷 Photo de référence</span>
+        <span style="display:flex;gap:6px;">
+          <button class="btn btn-secondary" style="padding:2px 8px;font-size:10px;" onclick="openPhotoViewer()">⛶ Agrandir</button>
+          <button class="btn btn-secondary" style="padding:2px 8px;font-size:10px;" onclick="clearProcPhoto()">✕ Retirer</button>
+        </span>
+      </div>
+      <img id="proc-photo-ref-img" src="" alt="référence" onclick="openPhotoViewer()" />
+    </div>
+    <input type="hidden" id="proc-edit-id" />
+    <div class="form-row">
+      <div class="form-group" style="flex:2">
+        <label>Nom</label>
+        <input type="text" id="proc-name" placeholder="ex: GetUserOrders" />
+      </div>
+      <div class="form-group" style="flex:1">
+        <label>Type</label>
+        <select id="proc-type">
+          <option value="PROCEDURE">Procédure</option>
+          <option value="REQUETE">Requête SQL</option>
+          <option value="CI">CI</option>
+          <option value="EXCEL">Excel</option>
+          <option value="DATADICTIONARY">Datadictionary</option>
+          <option value="MODULE_REFERENTIEL">Module Référentiel</option>
+          <option value="MUREX">Murex</option>
+          <option value="PRICESELECTION">Priceselection</option>
+          <option value="ID_MDP">ID et MDP</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Description</label>
+      <input type="text" id="proc-desc" placeholder="Courte description de ce que fait cette procédure" />
+    </div>
+    <div class="form-group">
+      <label>Flags <span style="color:#4a5568;font-weight:400;font-size:11px;">(identifiants, priorité, thème…)</span></label>
+      <div id="flags-chips"></div>
+      <div id="flag-add-row">
+        <input type="text" id="flag-new-input" placeholder="Nouveau flag… (Entrée pour ajouter)" onkeydown="flagInputKey(event)" />
+        <button type="button" class="btn btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="addFlagChip()">+ Flag</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Paramètres <button type="button" class="btn btn-secondary" style="padding:2px 8px;font-size:11px;margin-left:8px;" onclick="addParamRow()">+ Param</button></label>
+      <div id="params-list"></div>
+    </div>
+    <div class="form-group">
+      <label>Tables utilisées (séparées par des virgules)</label>
+      <input type="text" id="proc-tables" placeholder="ex: users, orders, products" />
+    </div>
+    <div class="form-group">
+      <label>Corps Procédure</label>
+      <textarea id="proc-body" rows="12" placeholder="Décrivez ou saisissez le contenu de la procédure..."></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-proc')">Annuler</button>
+      <button class="btn btn-primary" onclick="confirmSaveProc()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: IMPORT SCHEMA -->
+<div class="modal-overlay" id="modal-import">
+  <div class="modal">
+    <h2>Importer JSON — Schéma</h2>
+    <div class="form-group">
+      <label>Sélectionner un fichier .json</label>
+      <label id="file-drop-zone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px;background:#0d0f1a;border:2px dashed #2d3150;border-radius:8px;cursor:pointer;transition:border-color .15s;" ondragover="event.preventDefault();this.style.borderColor='#7c8cf8'" ondragleave="this.style.borderColor='#2d3150'" ondrop="onFileDrop(event)">
+        <span style="font-size:28px;">📂</span>
+        <span style="font-size:12px;color:#4a5568;">Glisser-déposer ou cliquer pour choisir</span>
+        <span id="file-name-display" style="font-size:11px;color:#7c8cf8;"></span>
+        <input type="file" accept=".json" id="import-file-input" style="display:none" onchange="onFileSelected(this)" />
+      </label>
+    </div>
+    <div class="form-group">
+      <label>Ou coller le JSON directement</label>
+      <textarea id="import-json-text" style="width:100%;height:120px;background:#252840;border:1px solid #2d3150;border-radius:6px;color:#e2e8f0;font-size:12px;padding:8px;outline:none;resize:vertical;font-family:monospace;" placeholder='{"tables": [...]}' ></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-import')">Annuler</button>
+      <button class="btn btn-primary" onclick="confirmImport()">Importer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: IMPORT PROCEDURES -->
+<div class="modal-overlay" id="modal-import-procs">
+  <div class="modal">
+    <h2>Importer JSON — Procédures</h2>
+    <div class="form-group">
+      <label>Sélectionner un fichier .json (depuis OneDrive ou autre)</label>
+      <label id="proc-drop-zone" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px;background:#0d0f1a;border:2px dashed #2d3150;border-radius:8px;cursor:pointer;transition:border-color .15s;" ondragover="event.preventDefault();this.style.borderColor='#7c8cf8'" ondragleave="this.style.borderColor='#2d3150'" ondrop="onProcFileDrop(event)">
+        <span style="font-size:28px;">📂</span>
+        <span style="font-size:12px;color:#4a5568;">Cliquer pour ouvrir le gestionnaire de fichiers</span>
+        <span id="proc-file-name-display" style="font-size:11px;color:#7c8cf8;"></span>
+        <input type="file" accept=".json" id="import-procs-file-input" style="display:none" onchange="onProcFileSelected(this)" />
+      </label>
+    </div>
+    <div class="form-group">
+      <label>Ou coller le JSON directement <span style="color:#4a5568;">(copier le contenu du fichier .json)</span></label>
+      <textarea id="import-procs-text" style="width:100%;height:130px;background:#252840;border:1px solid #2d3150;border-radius:6px;color:#e2e8f0;font-size:12px;padding:8px;outline:none;resize:vertical;font-family:monospace;" placeholder='{"procedures": [...]}' ></textarea>
+    </div>
+    <div style="padding:8px 0;font-size:11px;color:#4a5568;border-top:1px solid #1a1d2e;margin-top:4px;">
+      💡 Sur mobile : ouvrir le fichier dans <strong>OneDrive</strong> → <em>⋯ → Copier le texte</em> → coller ci-dessus
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-import-procs')">Annuler</button>
+      <button class="btn btn-primary" onclick="confirmImportProcs()">Importer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let schema = { tables: [], relations: [] };
+let transform = { x: 0, y: 0, scale: 1 };
+let dragging = null;       // { tableId, startX, startY, startTX, startTY }
+let panning  = null;       // { startX, startY, startTX, startTY }
+let selectedTable = null;
+let ctxTableId = null;
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  loadFromStorage();
+  renderSchemaList();
+  document.addEventListener('click', closeContextMenu);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { closeAllModals(); closeContextMenu(); }
+    if (e.key === 'Delete' && selectedTable && currentTab === 'schema') deleteTable(selectedTable);
+  });
+});
+
+// ─── STORAGE ──────────────────────────────────────────────────────────────────
+function saveToStorage() {
+  localStorage.setItem('sql_schema', JSON.stringify(schema));
+}
+function loadFromStorage() {
+  try {
+    const s = localStorage.getItem('sql_schema');
+    if (s) {
+      const parsed = JSON.parse(s);
+      // Ignore stored data if it only contains the old demo tables
+      const demoIds = new Set(['users','orders','products','order_items']);
+      const isOnlyDemo = parsed.tables && parsed.tables.length > 0 &&
+        parsed.tables.every(t => demoIds.has(t.id));
+      if (!isOnlyDemo) schema = parsed;
+    }
+    if (!schema.procedures) schema.procedures = [];
+  } catch(e) {}
+}
+
+// ─── RENDER ───────────────────────────────────────────────────────────────────
+function render() {
+  renderSchemaList();
+  updateZoomInfo();
+}
+function renderTables() { renderSchemaList(); }  // legacy alias
+
+// ─── SCHEMA LIST VIEW ────────────────────────────────────────────────────────
+function renderSchemaList(filter) {
+  filter = filter ?? (document.getElementById('schema-search')?.value || '');
+  const list = document.getElementById('schema-table-list');
+  if (!list) return;
+  list.innerHTML = '';
+  const tables = schema.tables.filter(t =>
+    !filter || t.name.toLowerCase().includes(filter.toLowerCase())
+  );
+  if (!tables.length) {
+    list.innerHTML = `<div style="color:#2d3150;font-size:12px;text-align:center;padding:24px;">
+      ${filter ? 'Aucun résultat' : 'Aucune table — cliquez sur + Table'}</div>`;
+    return;
+  }
+  tables.forEach(table => {
+    const outRels = schema.relations.filter(r => r.fromTable === table.id).length;
+    const inRels  = schema.relations.filter(r => r.toTable   === table.id).length;
+    const item = document.createElement('div');
+    item.className = 'schema-table-item' + (selectedTable === table.id ? ' active' : '');
+    item.innerHTML = `
+      <span class="schema-table-item-icon">▦</span>
+      <div class="schema-table-item-info">
+        <div class="schema-table-item-name">${escHtml(table.name)}</div>
+        <div class="schema-table-item-meta">${table.fields.length} champ${table.fields.length!==1?'s':''} · ${outRels+inRels} relation${outRels+inRels!==1?'s':''}</div>
+      </div>`;
+    item.addEventListener('click', () => showTableDetail(table.id));
+    list.appendChild(item);
+  });
+}
+
+function filterSchemaTables() {
+  renderSchemaList(document.getElementById('schema-search').value);
+}
+
+function showTableDetail(tableId) {
+  selectedTable = tableId;
+  const table = schema.tables.find(t => t.id === tableId);
+  if (!table) return;
+  renderSchemaList();
+
+  document.getElementById('schema-empty').style.display = 'none';
+  const view = document.getElementById('schema-view');
+  view.classList.add('active');
+
+  document.getElementById('schema-view-name-text').textContent = table.name;
+  document.getElementById('schema-view-count').textContent = `(${table.fields.length} champ${table.fields.length!==1?'s':''})`;
+
+  document.getElementById('schema-add-field-btn').onclick = () => openAddFieldModal(tableId);
+  document.getElementById('schema-edit-btn').onclick      = () => openRenameModal(tableId);
+  document.getElementById('schema-delete-btn').onclick    = () => {
+    if (confirm(`Supprimer la table "${table.name}" et ses relations ?`)) {
+      deleteTable(tableId);
+      document.getElementById('schema-view').classList.remove('active');
+      document.getElementById('schema-empty').style.display = '';
+    }
+  };
+
+  // ── FIELDS SECTION ──
+  let html = `<div>
+    <div class="schema-section-title">
+      <span>Champs</span>
+      <button class="btn btn-secondary" style="padding:3px 10px;font-size:11px;" onclick="openAddFieldModal('${tableId}')">+ Ajouter</button>
+    </div>
+    <table class="fields-table">
+      <thead><tr><th></th><th>Nom</th><th>Description</th><th>Type</th><th>Contraintes</th><th></th></tr></thead>
+      <tbody>`;
+
+  table.fields.forEach((field, idx) => {
+    let badge = '';
+    if (field.primaryKey)  badge = '<span class="field-badge badge-pk">PK</span>';
+    else if (field.foreignKey) badge = '<span class="field-badge badge-fk">FK</span>';
+    else if (field.unique) badge = '<span class="field-badge badge-uk">UK</span>';
+
+    const constraints = [];
+    if (!field.nullable) constraints.push('NOT NULL');
+    if (field.autoIncrement) constraints.push('AUTO_INCREMENT');
+    if (field.default) constraints.push(`DEFAULT ${field.default}`);
+
+    html += `<tr>
+      <td style="width:36px">${badge}</td>
+      <td style="font-weight:600;color:#e2e8f0;white-space:nowrap">${escHtml(field.name)}</td>
+      <td style="color:#a0aec0;font-size:11px;font-style:italic">${field.description ? escHtml(field.description) : '<span style="color:#2d3150">—</span>'}</td>
+      <td style="color:#718096;font-family:monospace;white-space:nowrap">${escHtml(field.type)}</td>
+      <td style="color:#4a5568;font-size:11px;white-space:nowrap">${constraints.join(', ')}</td>
+      <td style="width:60px;text-align:right;white-space:nowrap">
+        <button class="icon-btn" onclick="openEditFieldModal('${tableId}',${idx})" title="Modifier">✎</button>
+        <button class="icon-btn" style="color:#e53e3e" onclick="deleteField('${tableId}',${idx})" title="Supprimer">✕</button>
+      </td>
+    </tr>`;
+  });
+  if (!table.fields.length) {
+    html += `<tr><td colspan="6" style="color:#2d3150;text-align:center;padding:16px;">Aucun champ — cliquez sur + Ajouter</td></tr>`;
+  }
+  html += `</tbody></table></div>`;
+
+  // ── OUTGOING RELATIONS (this table → others) ──
+  const outgoing = schema.relations.filter(r => r.fromTable === tableId);
+  html += `<div>
+    <div class="schema-section-title"><span>Relations sortantes (clés étrangères)</span></div>
+    <div class="rel-grid">`;
+  if (outgoing.length) {
+    outgoing.forEach((rel, i) => {
+      const toTable = schema.tables.find(t => t.id === rel.toTable);
+      const fromField = table.fields[rel.fromField];
+      const toField   = toTable?.fields[rel.toField];
+      const typeLabel = rel.type === 'many-to-one' ? 'N : 1' : rel.type === 'one-to-many' ? '1 : N' : '1 : 1';
+      html += `<div class="rel-card outgoing" onclick="showTableDetail('${rel.toTable}')">
+        <span class="rel-card-arrow">→</span>
+        <div class="rel-card-body">
+          <div class="rel-card-title">
+            <span style="color:#4a5568">${escHtml(table.name)}.</span><span style="color:#63b3ed">${escHtml(fromField?.name||'?')}</span>
+            <span style="color:#4a5568"> référence </span>
+            <span class="rel-table">${escHtml(toTable?.name||'?')}</span>.<span style="color:#63b3ed">${escHtml(toField?.name||'?')}</span>
+          </div>
+          <div class="rel-card-fields">FK → ${escHtml(toTable?.name||'?')} (${escHtml(toField?.type||'?')})</div>
+        </div>
+        <span class="rel-type-badge">${typeLabel}</span>
+      </div>`;
+    });
+  } else {
+    html += `<div style="color:#2d3150;font-size:12px;padding:12px;">Aucune clé étrangère</div>`;
+  }
+  html += `</div></div>`;
+
+  // ── INCOMING RELATIONS (others → this table) ──
+  const incoming = schema.relations.filter(r => r.toTable === tableId);
+  html += `<div>
+    <div class="schema-section-title"><span>Relations entrantes (référencée par)</span></div>
+    <div class="rel-grid">`;
+  if (incoming.length) {
+    incoming.forEach(rel => {
+      const fromTable = schema.tables.find(t => t.id === rel.fromTable);
+      const fromField = fromTable?.fields[rel.fromField];
+      const toField   = table.fields[rel.toField];
+      const typeLabel = rel.type === 'many-to-one' ? 'N : 1' : rel.type === 'one-to-many' ? '1 : N' : '1 : 1';
+      html += `<div class="rel-card incoming" onclick="showTableDetail('${rel.fromTable}')">
+        <span class="rel-card-arrow">←</span>
+        <div class="rel-card-body">
+          <div class="rel-card-title">
+            <span class="rel-table">${escHtml(fromTable?.name||'?')}</span>.<span style="color:#68d391">${escHtml(fromField?.name||'?')}</span>
+            <span style="color:#4a5568"> pointe vers </span>
+            <span style="color:#4a5568">${escHtml(table.name)}.</span><span style="color:#68d391">${escHtml(toField?.name||'?')}</span>
+          </div>
+          <div class="rel-card-fields">${escHtml(fromTable?.name||'?')} utilise cette table comme référence</div>
+        </div>
+        <span class="rel-type-badge">${typeLabel}</span>
+      </div>`;
+    });
+  } else {
+    html += `<div style="color:#2d3150;font-size:12px;padding:12px;">Aucune table ne référence celle-ci</div>`;
+  }
+  html += `</div></div>`;
+
+  document.getElementById('schema-view-body').innerHTML = html;
+}
+
+function deleteField(tableId, idx) {
+  const table = schema.tables.find(t => t.id === tableId);
+  if (!table) return;
+  const field = table.fields[idx];
+  if (!confirm(`Supprimer le champ "${field.name}" ?`)) return;
+  // Remove relations using this field index
+  schema.relations = schema.relations.filter(r =>
+    !(r.fromTable === tableId && r.fromField === idx) &&
+    !(r.toTable   === tableId && r.toField   === idx)
+  );
+  // Shift relation indexes
+  schema.relations.forEach(r => {
+    if (r.fromTable === tableId && r.fromField > idx) r.fromField--;
+    if (r.toTable   === tableId && r.toField   > idx) r.toField--;
+  });
+  table.fields.splice(idx, 1);
+  saveToStorage();
+  showTableDetail(tableId);
+  renderSchemaList();
+}
+
+// stub – canvas functions no longer used
+function createTableCard(table) {
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'table-header';
+  header.innerHTML = `
+    <span class="table-icon">▦</span>
+    <span class="table-name">${escHtml(table.name)}</span>
+    <div class="table-actions">
+      <button class="icon-btn" title="Ajouter un champ" onclick="openAddFieldModal('${table.id}')">+</button>
+      <button class="icon-btn" title="Renommer" onclick="openRenameModal('${table.id}')">✎</button>
+    </div>
+  `;
+  header.addEventListener('mousedown', e => startDrag(e, table.id));
+  header.addEventListener('contextmenu', e => showContextMenu(e, table.id));
+  card.appendChild(header);
+
+  // Fields
+  const fieldsList = document.createElement('div');
+  fieldsList.className = 'fields-list';
+
+  table.fields.forEach((field, idx) => {
+    const row = document.createElement('div');
+    row.className = 'field-row';
+    row.id = `field-${table.id}-${idx}`;
+
+    let badge = '<span class="field-badge badge-empty"></span>';
+    if (field.primaryKey) badge = '<span class="field-badge badge-pk">PK</span>';
+    else if (field.foreignKey) badge = '<span class="field-badge badge-fk">FK</span>';
+    else if (field.unique) badge = '<span class="field-badge badge-uk">UK</span>';
+
+    const nullable = field.nullable ? '<span class="field-null" title="Nullable">◌</span>' : '';
+    const ai = field.autoIncrement ? ' <span style="color:#68d391;font-size:9px">AI</span>' : '';
+
+    row.innerHTML = `
+      ${badge}
+      <span class="field-name">${escHtml(field.name)}</span>
+      ${nullable}
+      <span class="field-type">${escHtml(field.type)}${ai}</span>
+      <div class="field-dot" title="Connecter" data-table="${table.id}" data-field="${idx}"></div>
+    `;
+    row.addEventListener('dblclick', () => openEditFieldModal(table.id, idx));
+    fieldsList.appendChild(row);
+  });
+
+  // Add field button
+  const addRow = document.createElement('div');
+  addRow.className = 'add-field-row';
+  addRow.textContent = '+ Ajouter un champ';
+  addRow.addEventListener('click', () => openAddFieldModal(table.id));
+
+  card.appendChild(fieldsList);
+  card.appendChild(addRow);
+
+  card.addEventListener('click', e => {
+    e.stopPropagation();
+    selectTable(table.id);
+  });
+
+  return card;
+}
+
+function renderRelations() {
+  const svg = document.getElementById('svg-layer');
+  // Clear old lines
+  svg.querySelectorAll('.relation-group').forEach(el => el.remove());
+
+  schema.relations.forEach((rel, idx) => {
+    const fromTable = schema.tables.find(t => t.id === rel.fromTable);
+    const toTable   = schema.tables.find(t => t.id === rel.toTable);
+    if (!fromTable || !toTable) return;
+
+    const fromEl = document.getElementById(`field-${rel.fromTable}-${rel.fromField}`);
+    const toEl   = document.getElementById(`field-${rel.toTable}-${rel.toField}`);
+    if (!fromEl || !toEl) return;
+
+    const points = getConnectionPoints(fromTable, toTable, fromEl, toEl);
+    const { x1, y1, x2, y2 } = points;
+
+    const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.className = 'relation-group';
+
+    const cx = (x1 + x2) / 2;
+    const cy = (y1 + y2) / 2;
+    const dx = Math.abs(x2 - x1) * 0.4 + 40;
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d', `M${x1},${y1} C${x1+dx*(x1<x2?1:-1)},${y1} ${x2-dx*(x1<x2?1:-1)},${y2} ${x2},${y2}`);
+    path.setAttribute('class','relation-line');
+    path.setAttribute('marker-end','url(#arrow-end)');
+    path.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      if (confirm(`Supprimer la relation ${fromTable.name}.${fromTable.fields[rel.fromField]?.name} → ${toTable.name}.${toTable.fields[rel.toField]?.name} ?`)) {
+        schema.relations.splice(idx, 1);
+        saveToStorage();
+        render();
+      }
+    });
+
+    // Label
+    const text = document.createElementNS('http://www.w3.org/2000/svg','text');
+    text.setAttribute('x', cx);
+    text.setAttribute('y', cy - 6);
+    text.setAttribute('text-anchor','middle');
+    text.setAttribute('font-size','10');
+    text.setAttribute('fill','#4a5568');
+    text.textContent = rel.type === 'many-to-one' ? 'N:1' : rel.type === 'one-to-many' ? '1:N' : '1:1';
+
+    g.appendChild(path);
+    g.appendChild(text);
+    svg.appendChild(g);
+  });
+}
+
+function getConnectionPoints(fromTable, toTable, fromEl, toEl) {
+  const wrapper = document.getElementById('canvas-wrapper').getBoundingClientRect();
+  const fr = fromEl.getBoundingClientRect();
+  const tr = toEl.getBoundingClientRect();
+
+  const fx = (fr.left + fr.right) / 2 - wrapper.left;
+  const fy = (fr.top  + fr.bottom) / 2 - wrapper.top;
+  const tx = (tr.left + tr.right) / 2 - wrapper.left;
+  const ty = (tr.top  + tr.bottom) / 2 - wrapper.top;
+
+  // Choose left or right side
+  const fromRight = fromTable.x < toTable.x;
+  return {
+    x1: fromRight ? fr.right - wrapper.left : fr.left - wrapper.left,
+    y1: fy,
+    x2: fromRight ? tr.left  - wrapper.left : tr.right - wrapper.left,
+    y2: ty
+  };
+}
+
+// ─── DRAG ────────────────────────────────────────────────────────────────────
+function startDrag(e, tableId) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const table = schema.tables.find(t => t.id === tableId);
+  dragging = {
+    tableId,
+    startX: e.clientX,
+    startY: e.clientY,
+    startTX: table.x,
+    startTY: table.y
+  };
+  selectTable(tableId);
+}
+
+function onCanvasMouseDown(e) {
+  if (e.button === 1 || (e.button === 0 && e.target.id === 'canvas-wrapper')) {
+    panning = { startX: e.clientX, startY: e.clientY, startTX: transform.x, startTY: transform.y };
+    e.preventDefault();
+  }
+}
+
+function onCanvasMouseMove(e) {
+  if (dragging) {
+    const table = schema.tables.find(t => t.id === dragging.tableId);
+    if (table) {
+      table.x = dragging.startTX + (e.clientX - dragging.startX) / transform.scale;
+      table.y = dragging.startTY + (e.clientY - dragging.startY) / transform.scale;
+      const card = document.getElementById('table-' + dragging.tableId);
+      if (card) { card.style.left = table.x+'px'; card.style.top = table.y+'px'; }
+      renderRelations();
+      renderMinimap();
+    }
+  } else if (panning) {
+    transform.x = panning.startTX + (e.clientX - panning.startX);
+    transform.y = panning.startTY + (e.clientY - panning.startY);
+    document.getElementById('tables-layer').style.transform =
+      `translate(${transform.x}px,${transform.y}px) scale(${transform.scale})`;
+    renderRelations();
+  }
+}
+
+function onCanvasMouseUp(e) {
+  if (dragging) { saveToStorage(); dragging = null; }
+  panning = null;
+}
+
+// ─── ZOOM ─────────────────────────────────────────────────────────────────────
+function onWheel(e) {
+  e.preventDefault();
+  const delta = e.deltaY < 0 ? 1.1 : 0.9;
+  const wrapper = document.getElementById('canvas-wrapper').getBoundingClientRect();
+  const mx = e.clientX - wrapper.left;
+  const my = e.clientY - wrapper.top;
+  transform.x = mx - (mx - transform.x) * delta;
+  transform.y = my - (my - transform.y) * delta;
+  transform.scale = Math.min(2.5, Math.max(0.2, transform.scale * delta));
+  document.getElementById('tables-layer').style.transform =
+    `translate(${transform.x}px,${transform.y}px) scale(${transform.scale})`;
+  renderRelations();
+  updateZoomInfo();
+}
+
+function updateZoomInfo() {} // no-op, canvas removed
+function fitView() {}        // no-op
+
+// ─── TABLE CRUD ───────────────────────────────────────────────────────────────
+function openAddTableModal() {
+  document.getElementById('new-table-name').value = '';
+  openModal('modal-add-table');
+  setTimeout(() => document.getElementById('new-table-name').focus(), 100);
+}
+
+function confirmAddTable() {
+  const name = document.getElementById('new-table-name').value.trim();
+  if (!name) return;
+  const id = name.toLowerCase().replace(/[^a-z0-9]/g,'_') + '_' + Date.now();
+  schema.tables.push({ id, name, x: 0, y: 0, fields: [] });
+  saveToStorage();
+  closeModal('modal-add-table');
+  renderSchemaList();
+  showTableDetail(id);
+}
+
+function deleteTable(tableId) {
+  schema.tables = schema.tables.filter(t => t.id !== tableId);
+  schema.relations = schema.relations.filter(r => r.fromTable !== tableId && r.toTable !== tableId);
+  if (selectedTable === tableId) selectedTable = null;
+  saveToStorage();
+  renderSchemaList();
+}
+
+function selectTable(id) { selectedTable = id; }
+
+function openRenameModal(tableId) {
+  const table = schema.tables.find(t => t.id === tableId);
+  if (!table) return;
+  document.getElementById('rename-table-id').value = tableId;
+  document.getElementById('rename-table-name').value = table.name;
+  openModal('modal-rename-table');
+  setTimeout(() => document.getElementById('rename-table-name').select(), 100);
+}
+
+function confirmRenameTable() {
+  const id = document.getElementById('rename-table-id').value;
+  const name = document.getElementById('rename-table-name').value.trim();
+  if (!name) return;
+  const table = schema.tables.find(t => t.id === id);
+  if (table) table.name = name;
+  saveToStorage();
+  closeModal('modal-rename-table');
+  renderSchemaList();
+  if (selectedTable === id) showTableDetail(id);
+}
+
+// ─── FIELD CRUD ───────────────────────────────────────────────────────────────
+function openAddFieldModal(tableId) {
+  document.getElementById('field-table-id').value = tableId;
+  document.getElementById('field-index').value = '-1';
+  document.getElementById('modal-field-title').textContent = 'Nouveau champ';
+  document.getElementById('field-name').value = '';
+  document.getElementById('field-type').value = 'INT';
+  document.getElementById('field-pk').checked = false;
+  document.getElementById('field-nullable').checked = false;
+  document.getElementById('field-unique').checked = false;
+  document.getElementById('field-autoincrement').checked = false;
+  document.getElementById('field-description').value = '';
+  document.getElementById('field-default').value = '';
+  openModal('modal-add-field');
+  setTimeout(() => document.getElementById('field-name').focus(), 100);
+}
+
+function openEditFieldModal(tableId, idx) {
+  const table = schema.tables.find(t => t.id === tableId);
+  if (!table) return;
+  const field = table.fields[idx];
+  document.getElementById('field-table-id').value = tableId;
+  document.getElementById('field-index').value = idx;
+  document.getElementById('modal-field-title').textContent = 'Modifier le champ';
+  document.getElementById('field-name').value = field.name;
+  document.getElementById('field-type').value = field.type;
+  document.getElementById('field-pk').checked = !!field.primaryKey;
+  document.getElementById('field-nullable').checked = !!field.nullable;
+  document.getElementById('field-unique').checked = !!field.unique;
+  document.getElementById('field-autoincrement').checked = !!field.autoIncrement;
+  document.getElementById('field-description').value = field.description || '';
+  document.getElementById('field-default').value = field.default || '';
+  openModal('modal-add-field');
+}
+
+function confirmAddField() {
+  const tableId = document.getElementById('field-table-id').value;
+  const idx = parseInt(document.getElementById('field-index').value);
+  const table = schema.tables.find(t => t.id === tableId);
+  if (!table) return;
+
+  const field = {
+    name: document.getElementById('field-name').value.trim(),
+    type: document.getElementById('field-type').value,
+    description: document.getElementById('field-description').value.trim() || null,
+    primaryKey: document.getElementById('field-pk').checked,
+    nullable: document.getElementById('field-nullable').checked,
+    unique: document.getElementById('field-unique').checked,
+    autoIncrement: document.getElementById('field-autoincrement').checked,
+    default: document.getElementById('field-default').value.trim() || null
+  };
+  if (!field.name) return;
+
+  if (idx === -1) table.fields.push(field);
+  else table.fields[idx] = field;
+
+  saveToStorage();
+  closeModal('modal-add-field');
+  renderSchemaList();
+  if (selectedTable === tableId) showTableDetail(tableId);
+}
+
+// ─── RELATION CRUD ────────────────────────────────────────────────────────────
+function openAddRelationModal() {
+  populateTableSelects();
+  openModal('modal-add-relation');
+}
+
+function populateTableSelects() {
+  const from = document.getElementById('rel-from-table');
+  const to   = document.getElementById('rel-to-table');
+  const opts = schema.tables.map(t => `<option value="${t.id}">${escHtml(t.name)}</option>`).join('');
+  from.innerHTML = opts;
+  to.innerHTML   = opts;
+  updateRelFromFields();
+  updateRelToFields();
+}
+
+function updateRelFromFields() {
+  const id = document.getElementById('rel-from-table').value;
+  const table = schema.tables.find(t => t.id === id);
+  const sel = document.getElementById('rel-from-field');
+  sel.innerHTML = table ? table.fields.map((f,i) => `<option value="${i}">${escHtml(f.name)}</option>`).join('') : '';
+}
+
+function updateRelToFields() {
+  const id = document.getElementById('rel-to-table').value;
+  const table = schema.tables.find(t => t.id === id);
+  const sel = document.getElementById('rel-to-field');
+  sel.innerHTML = table ? table.fields.map((f,i) => `<option value="${i}">${escHtml(f.name)}</option>`).join('') : '';
+}
+
+function confirmAddRelation() {
+  const rel = {
+    fromTable: document.getElementById('rel-from-table').value,
+    fromField: parseInt(document.getElementById('rel-from-field').value),
+    toTable:   document.getElementById('rel-to-table').value,
+    toField:   parseInt(document.getElementById('rel-to-field').value),
+    type:      document.getElementById('rel-type').value
+  };
+  if (rel.fromTable === rel.toTable && rel.fromField === rel.toField) return;
+  schema.relations.push(rel);
+  // Mark FK
+  const fromTable = schema.tables.find(t => t.id === rel.fromTable);
+  if (fromTable && fromTable.fields[rel.fromField]) {
+    fromTable.fields[rel.fromField].foreignKey = true;
+  }
+  saveToStorage();
+  closeModal('modal-add-relation');
+  renderSchemaList();
+  if (selectedTable) showTableDetail(selectedTable);
+}
+
+// ─── CONTEXT MENU ─────────────────────────────────────────────────────────────
+function showContextMenu(e, tableId) {
+  e.preventDefault();
+  ctxTableId = tableId;
+  const menu = document.getElementById('context-menu');
+  menu.style.display = 'block';
+  menu.style.left = e.clientX + 'px';
+  menu.style.top  = e.clientY + 'px';
+  document.getElementById('ctx-add-field').onclick = () => { openAddFieldModal(tableId); closeContextMenu(); };
+  document.getElementById('ctx-edit-table').onclick = () => { openRenameModal(tableId); closeContextMenu(); };
+  document.getElementById('ctx-delete-table').onclick = () => {
+    if (confirm('Supprimer cette table et ses relations ?')) deleteTable(tableId);
+    closeContextMenu();
+  };
+}
+
+function closeContextMenu() {
+  document.getElementById('context-menu').style.display = 'none';
+}
+
+// ─── EXPORT / IMPORT ──────────────────────────────────────────────────────────
+function exportJSON() {
+  const blob = new Blob([JSON.stringify(schema, null, 2)], { type: 'application/json' });
+  download(blob, 'schema.json');
+}
+
+function exportSQL() {
+  let sql = '';
+  schema.tables.forEach(table => {
+    sql += `CREATE TABLE \`${table.name}\` (\n`;
+    const lines = table.fields.map(f => {
+      let line = `  \`${f.name}\` ${f.type}`;
+      if (!f.nullable) line += ' NOT NULL';
+      if (f.autoIncrement) line += ' AUTO_INCREMENT';
+      if (f.unique && !f.primaryKey) line += ' UNIQUE';
+      if (f.default !== null && f.default !== undefined && f.default !== '') line += ` DEFAULT ${f.default}`;
+      return line;
+    });
+    const pks = table.fields.filter(f=>f.primaryKey).map(f=>`\`${f.name}\``);
+    if (pks.length) lines.push(`  PRIMARY KEY (${pks.join(', ')})`);
+    // FK constraints
+    schema.relations.filter(r=>r.fromTable===table.id).forEach(r=>{
+      const ft = schema.tables.find(t=>t.id===r.fromTable);
+      const tt = schema.tables.find(t=>t.id===r.toTable);
+      if (!ft||!tt) return;
+      const ff = ft.fields[r.fromField], tf = tt.fields[r.toField];
+      if (!ff||!tf) return;
+      lines.push(`  FOREIGN KEY (\`${ff.name}\`) REFERENCES \`${tt.name}\`(\`${tf.name}\`)`);
+    });
+    sql += lines.join(',\n');
+    sql += '\n);\n\n';
+  });
+  const blob = new Blob([sql], { type: 'text/plain' });
+  download(blob, 'schema.sql');
+}
+
+function importJSON() {
+  document.getElementById('import-json-text').value = '';
+  document.getElementById('file-name-display').textContent = '';
+  document.getElementById('import-file-input').value = '';
+  openModal('modal-import');
+}
+
+function onFileSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  document.getElementById('file-name-display').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = e => { document.getElementById('import-json-text').value = e.target.result; };
+  reader.readAsText(file);
+}
+
+function onFileDrop(e) {
+  e.preventDefault();
+  document.getElementById('file-drop-zone').style.borderColor = '#2d3150';
+  const file = e.dataTransfer.files[0];
+  if (!file || !file.name.endsWith('.json')) return;
+  document.getElementById('file-name-display').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = ev => { document.getElementById('import-json-text').value = ev.target.result; };
+  reader.readAsText(file);
+}
+
+function confirmImport() {
+  try {
+    const data = JSON.parse(document.getElementById('import-json-text').value);
+    if (data.tables) { schema = data; if (!schema.procedures) schema.procedures = []; saveToStorage(); closeModal('modal-import'); selectedTable = null; renderSchemaList(); document.getElementById('schema-view').classList.remove('active'); document.getElementById('schema-empty').style.display = ''; }
+    else alert('Format invalide — le JSON doit contenir une clé "tables"');
+  } catch(e) { alert('JSON invalide : ' + e.message); }
+}
+
+function clearAll() {
+  if (confirm('Vider tout le schéma ?')) {
+    schema = { tables: [], relations: [], procedures: [] };
+    selectedTable = null;
+    saveToStorage();
+    renderSchemaList();
+    document.getElementById('schema-view').classList.remove('active');
+    document.getElementById('schema-empty').style.display = '';
+  }
+}
+
+function download(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+// ─── MINIMAP ──────────────────────────────────────────────────────────────────
+function renderMinimap() {
+  const canvas = document.getElementById('minimap-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 160, 100);
+
+  if (!schema.tables.length) return;
+  const xs = schema.tables.map(t=>t.x);
+  const ys = schema.tables.map(t=>t.y);
+  const minX = Math.min(...xs) - 20, minY = Math.min(...ys) - 20;
+  const maxX = Math.max(...xs) + 240, maxY = Math.max(...ys) + 160;
+  const sx = 140 / (maxX - minX), sy = 80 / (maxY - minY);
+  const s  = Math.min(sx, sy);
+
+  schema.tables.forEach(t => {
+    ctx.fillStyle = '#252840';
+    ctx.strokeStyle = '#4a5568';
+    ctx.lineWidth = 0.5;
+    const rx = (t.x - minX) * s + 10;
+    const ry = (t.y - minY) * s + 10;
+    ctx.fillRect(rx, ry, 220*s, (30 + t.fields.length*22)*s);
+    ctx.strokeRect(rx, ry, 220*s, (30 + t.fields.length*22)*s);
+    ctx.fillStyle = '#7c8cf8';
+    ctx.font = `${Math.max(6, 9*s)}px sans-serif`;
+    ctx.fillText(t.name, rx+2, ry+8*s+2);
+  });
+}
+
+// ─── MODAL HELPERS ────────────────────────────────────────────────────────────
+function openModal(id) {
+  document.getElementById(id).classList.add('active');
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('active');
+}
+function closeAllModals() {
+  document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
+}
+
+// Enter key support for modals
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  if (document.getElementById('modal-add-table').classList.contains('active')) confirmAddTable();
+  else if (document.getElementById('modal-add-field').classList.contains('active')) confirmAddField();
+  else if (document.getElementById('modal-rename-table').classList.contains('active')) confirmRenameTable();
+});
+
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ─── PROCEDURES ────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+
+let selectedProcId = null;
+let currentTab = 'schema';
+let capturedPhotoSrc = null;
+
+// ─── MOBILE HELPERS ────────────────────────────────────────────────────────
+function isMobile() { return window.innerWidth <= 768; }
+
+function mobileProcBack() {
+  document.getElementById('proc-sidebar').classList.remove('mob-hide');
+  document.getElementById('proc-detail').classList.remove('mob-show');
+  selectedProcId = null;
+  renderProcList(
+    document.getElementById('proc-search').value,
+    document.getElementById('proc-filter-type').value,
+    document.getElementById('proc-filter-flag').value
+  );
+}
+
+// ─── CAMERA / PHOTO ────────────────────────────────────────────────────────
+function triggerPhotoCapture() {
+  document.getElementById('photo-capture-input').click();
+}
+
+function handlePhotoCapture(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    capturedPhotoSrc = e.target.result;
+    document.getElementById('photo-modal-img').src = capturedPhotoSrc;
+    openModal('modal-photo');
+  };
+  reader.readAsDataURL(file);
+  event.target.value = '';
+}
+
+function openPhotoViewer() {
+  if (capturedPhotoSrc) {
+    document.getElementById('photo-modal-img').src = capturedPhotoSrc;
+    openModal('modal-photo');
+  }
+}
+
+function openAddProcModalWithPhoto() {
+  closeModal('modal-photo');
+  openAddProcModal();
+  if (capturedPhotoSrc) {
+    document.getElementById('proc-photo-ref').style.display = 'block';
+    document.getElementById('proc-photo-ref-img').src = capturedPhotoSrc;
+  }
+}
+
+function clearProcPhoto() {
+  document.getElementById('proc-photo-ref').style.display = 'none';
+  document.getElementById('proc-photo-ref-img').src = '';
+}
+
+// ─── TAB SWITCH ────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById('tab-schema').classList.toggle('active', tab === 'schema');
+  document.getElementById('tab-proc').classList.toggle('active',   tab === 'proc');
+  document.getElementById('schema-panel').style.display = tab === 'schema' ? 'flex' : 'none';
+  document.getElementById('proc-panel').classList.toggle('active', tab === 'proc');
+  document.getElementById('toolbar-schema').style.display = tab === 'schema' ? 'flex' : 'none';
+  document.getElementById('toolbar-proc').style.display   = tab === 'proc'   ? 'flex' : 'none';
+  document.getElementById('zoom-info').style.display = 'none';
+  if (tab === 'schema') renderSchemaList();
+  else renderProcList();
+}
+
+// ─── FLAG COLORS ───────────────────────────────────────────────────────────
+const FLAG_PALETTE = [
+  { bg:'#553c1e', color:'#f6ad55' },
+  { bg:'#1e3a5e', color:'#63b3ed' },
+  { bg:'#1e4c3a', color:'#68d391' },
+  { bg:'#4a1e5e', color:'#d6bcfa' },
+  { bg:'#5e1e1e', color:'#fc8181' },
+  { bg:'#3a3a1e', color:'#faf089' },
+  { bg:'#1e4a4a', color:'#76e4f7' },
+  { bg:'#4a3a1e', color:'#fbd38d' },
+  { bg:'#3a1e4a', color:'#b794f4' },
+  { bg:'#1e3a3a', color:'#81e6d9' },
+];
+function flagColor(flag) {
+  let h = 0;
+  for (let i = 0; i < flag.length; i++) h = (h * 31 + flag.charCodeAt(i)) & 0xffff;
+  return FLAG_PALETTE[h % FLAG_PALETTE.length];
+}
+function flagBadgeStyle(flag) {
+  const c = flagColor(flag);
+  return `background:${c.bg};color:${c.color};`;
+}
+
+// ─── PROC TYPE LABELS ──────────────────────────────────────────────────────
+const PROC_TYPE_LABELS = {
+  PROCEDURE:          'Procédure',
+  REQUETE:            'Requête SQL',
+  CI:                 'CI',
+  EXCEL:              'Excel',
+  DATADICTIONARY:     'Datadictionary',
+  MODULE_REFERENTIEL: 'Module Référentiel',
+  MUREX:              'Murex',
+  PRICESELECTION:     'Priceselection',
+  ID_MDP:             'ID et MDP'
+};
+function procTypeLabel(type) { return PROC_TYPE_LABELS[type] || type; }
+function procTypeClass(type) { return 'type-' + (type||'').toLowerCase().replace(/[^a-z0-9]/g, '_'); }
+
+// ─── REFRESH FLAG FILTER DROPDOWN ──────────────────────────────────────────
+function refreshFlagFilter() {
+  const sel = document.getElementById('proc-filter-flag');
+  const current = sel.value;
+  const allFlags = new Set();
+  (schema.procedures||[]).forEach(p => (p.flags||[]).forEach(f => allFlags.add(f)));
+  sel.innerHTML = '<option value="">Tous les flags</option>';
+  [...allFlags].sort().forEach(f => {
+    const o = document.createElement('option');
+    o.value = f; o.textContent = '🏷 ' + f;
+    if (f === current) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+// ─── RENDER PROC LIST ──────────────────────────────────────────────────────
+function renderProcList(filter = '', typeFilter = '', flagFilter = '') {
+  refreshFlagFilter();
+  const list = document.getElementById('proc-list');
+  list.innerHTML = '';
+  const procs = (schema.procedures || []).filter(p => {
+    const matchText = !filter || p.name.toLowerCase().includes(filter.toLowerCase()) ||
+      (p.description||'').toLowerCase().includes(filter.toLowerCase()) ||
+      (p.flags||[]).some(f => f.toLowerCase().includes(filter.toLowerCase()));
+    const matchType = !typeFilter || p.type === typeFilter;
+    const matchFlag = !flagFilter || (p.flags||[]).includes(flagFilter);
+    return matchText && matchType && matchFlag;
+  });
+
+  if (!procs.length) {
+    list.innerHTML = `<div style="color:#2d3150;font-size:12px;text-align:center;padding:24px;">
+      ${filter ? 'Aucun résultat' : 'Aucune procédure — cliquez sur + Procédure'}</div>`;
+    return;
+  }
+
+  procs.forEach(proc => {
+    const item = document.createElement('div');
+    item.className = 'proc-item' + (selectedProcId === proc.id ? ' active' : '');
+    const typeClass = procTypeClass(proc.type);
+    const params = (proc.parameters||[]).length;
+    const tables = (proc.tables||[]).length;
+    const flags = proc.flags || [];
+    item.innerHTML = `
+      <div class="proc-item-name">
+        <span class="proc-type-badge ${typeClass}">${escHtml(procTypeLabel(proc.type))}</span>
+        ${escHtml(proc.name)}
+      </div>
+      ${proc.description ? `<div class="proc-item-desc">${escHtml(proc.description)}</div>` : ''}
+      ${flags.length ? `<div class="proc-item-flags">${flags.map(f=>`<span class="flag-badge" style="${flagBadgeStyle(f)}">🏷 ${escHtml(f)}</span>`).join('')}</div>` : ''}
+      <div class="proc-item-meta">
+        ${params ? `<span class="proc-meta-tag">${params} param${params>1?'s':''}</span>` : ''}
+        ${tables ? `<span class="proc-meta-tag">${tables} table${tables>1?'s':''}</span>` : ''}
+      </div>
+    `;
+    item.addEventListener('click', () => showProcDetail(proc.id));
+    list.appendChild(item);
+  });
+}
+
+function filterProcs() {
+  renderProcList(
+    document.getElementById('proc-search').value,
+    document.getElementById('proc-filter-type').value,
+    document.getElementById('proc-filter-flag').value
+  );
+}
+
+// ─── SHOW PROCEDURE DETAIL ─────────────────────────────────────────────────
+function showProcDetail(id) {
+  selectedProcId = id;
+  const proc = (schema.procedures||[]).find(p => p.id === id);
+  if (!proc) return;
+
+  renderProcList(document.getElementById('proc-search').value);
+
+  document.getElementById('proc-empty').style.display = 'none';
+  const view = document.getElementById('proc-view');
+  view.classList.add('active');
+
+  // Mobile: switch from sidebar to detail
+  if (isMobile()) {
+    document.getElementById('proc-sidebar').classList.add('mob-hide');
+    document.getElementById('proc-detail').classList.add('mob-show');
+  }
+
+  const typeClass = procTypeClass(proc.type);
+  const procFlags = proc.flags || [];
+  document.getElementById('proc-view-name').innerHTML =
+    `<span class="proc-type-badge ${typeClass}">${escHtml(procTypeLabel(proc.type))}</span> ${escHtml(proc.name)}`
+    + (procFlags.length ? `<span style="margin-left:8px;display:inline-flex;gap:5px;flex-wrap:wrap;">${procFlags.map(f=>`<span class="flag-chip-view" style="${flagBadgeStyle(f)}">🏷 ${escHtml(f)}</span>`).join('')}</span>` : '');
+  document.getElementById('proc-view-desc').textContent = proc.description || '';
+
+  document.getElementById('proc-edit-btn').onclick = () => openEditProcModal(id);
+  document.getElementById('proc-delete-btn').onclick = () => {
+    if (confirm(`Supprimer la procédure "${proc.name}" ?`)) {
+      schema.procedures = schema.procedures.filter(p => p.id !== id);
+      selectedProcId = null;
+      saveToStorage();
+      document.getElementById('proc-view').classList.remove('active');
+      document.getElementById('proc-empty').style.display = '';
+      renderProcList(document.getElementById('proc-search').value);
+    }
+  };
+
+  // Build body
+  let html = '';
+
+  // Parameters section
+  if (proc.parameters && proc.parameters.length) {
+    html += `<div class="proc-section">
+      <div class="proc-section-title">Paramètres</div>
+      <table class="param-table">
+        <thead><tr><th>Mode</th><th>Nom</th><th>Type</th></tr></thead>
+        <tbody>`;
+    proc.parameters.forEach(p => {
+      const modeClass = `mode-${(p.mode||'IN').toLowerCase()}`;
+      html += `<tr>
+        <td><span class="param-mode ${modeClass}">${escHtml(p.mode||'IN')}</span></td>
+        <td>${escHtml(p.name)}</td>
+        <td style="color:#718096">${escHtml(p.type)}</td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+  }
+
+  // Tables used
+  if (proc.tables && proc.tables.length) {
+    html += `<div class="proc-section">
+      <div class="proc-section-title">Tables utilisées</div>
+      <div class="tables-used">`;
+    proc.tables.forEach(t => {
+      html += `<span class="table-tag">▦ ${escHtml(t)}</span>`;
+    });
+    html += `</div></div>`;
+  }
+
+  // SQL Body
+  if (proc.body) {
+    html += `<div class="proc-section">
+      <div class="proc-section-title">Corps SQL</div>
+      <div class="code-block">${highlightSQL(proc.body)}</div>
+    </div>`;
+  }
+
+  document.getElementById('proc-view-body').innerHTML = html;
+}
+
+// ─── SQL SYNTAX HIGHLIGHT (lightweight) ────────────────────────────────────
+function highlightSQL(code) {
+  const escaped = escHtml(code);
+  const keywords = ['BEGIN','END','DECLARE','SET','SELECT','INSERT','UPDATE','DELETE',
+    'FROM','WHERE','JOIN','LEFT','RIGHT','INNER','OUTER','ON','AS','INTO','VALUES',
+    'IF','THEN','ELSE','ELSEIF','CASE','WHEN','RETURN','RETURNS','CREATE','REPLACE',
+    'PROCEDURE','FUNCTION','TRIGGER','VIEW','CALL','DROP','TABLE','AND','OR','NOT',
+    'IN','LIKE','IS','NULL','ORDER','BY','GROUP','HAVING','LIMIT','OFFSET',
+    'BEFORE','AFTER','FOR','EACH','ROW','NEW','OLD','DELIMITER','REFERENCES',
+    'FOREIGN','KEY','PRIMARY','UNIQUE','INDEX','AUTO_INCREMENT','DEFAULT',
+    'COMMIT','ROLLBACK','TRANSACTION','START','LOOP','WHILE','REPEAT','UNTIL',
+    'CURSOR','OPEN','FETCH','CLOSE','HANDLER','CONDITION','SIGNAL','RESIGNAL',
+    'CONTINUE','EXIT','UNDO'];
+  const types = ['INT','BIGINT','SMALLINT','TINYINT','DECIMAL','FLOAT','DOUBLE',
+    'VARCHAR','TEXT','CHAR','BOOLEAN','DATE','DATETIME','TIMESTAMP','TIME',
+    'JSON','UUID','BLOB','ENUM','MEDIUMTEXT'];
+
+  let result = escaped;
+
+  // Comments
+  result = result.replace(/(--[^\n]*)/g, '<span class="sql-cmt">$1</span>');
+  result = result.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="sql-cmt">$1</span>');
+
+  // Strings
+  result = result.replace(/('(?:[^']|'')*')/g, '<span class="sql-str">$1</span>');
+
+  // Numbers
+  result = result.replace(/\b(\d+(\.\d+)?)\b/g, '<span class="sql-num">$1</span>');
+
+  // Types (before keywords to avoid overlap)
+  types.forEach(t => {
+    result = result.replace(new RegExp(`\\b(${t})\\b`, 'gi'),
+      `<span class="sql-type">$1</span>`);
+  });
+
+  // Keywords
+  keywords.forEach(kw => {
+    result = result.replace(new RegExp(`\\b(${kw})\\b`, 'gi'),
+      `<span class="sql-kw">$1</span>`);
+  });
+
+  return result;
+}
+
+// ─── FLAG CHIPS IN MODAL ───────────────────────────────────────────────────
+function renderFlagChips(flags) {
+  const container = document.getElementById('flags-chips');
+  container.innerHTML = '';
+  flags.forEach(f => {
+    const chip = document.createElement('span');
+    chip.className = 'flag-chip-edit';
+    chip.style.cssText = flagBadgeStyle(f);
+    chip.innerHTML = `🏷 ${escHtml(f)} <span class="flag-chip-rm" onclick="removeFlagChip(this,'${escHtml(f).replace(/'/g,"\\'")}')">✕</span>`;
+    container.appendChild(chip);
+  });
+}
+function addFlagChip() {
+  const input = document.getElementById('flag-new-input');
+  const val = input.value.trim();
+  if (!val) return;
+  const existing = getFlagsFromChips();
+  if (!existing.includes(val)) {
+    renderFlagChips([...existing, val]);
+  }
+  input.value = '';
+  input.focus();
+}
+function removeFlagChip(btn, flag) {
+  const existing = getFlagsFromChips().filter(f => f !== flag);
+  renderFlagChips(existing);
+}
+function getFlagsFromChips() {
+  return Array.from(document.querySelectorAll('#flags-chips .flag-chip-edit')).map(c => {
+    const txt = c.textContent.replace('✕','').trim();
+    return txt.startsWith('🏷 ') ? txt.slice(3).trim() : txt;
+  });
+}
+function flagInputKey(e) {
+  if (e.key === 'Enter') { e.preventDefault(); addFlagChip(); }
+}
+
+// ─── ADD / EDIT PROCEDURE MODAL ────────────────────────────────────────────
+function openAddProcModal() {
+  document.getElementById('modal-proc-title').textContent = 'Nouvelle procédure';
+  document.getElementById('proc-edit-id').value = '';
+  document.getElementById('proc-name').value = '';
+  document.getElementById('proc-type').value = 'PROCEDURE';
+  document.getElementById('proc-desc').value = '';
+  document.getElementById('proc-tables').value = '';
+  document.getElementById('proc-body').value = '';
+  document.getElementById('params-list').innerHTML = '';
+  renderFlagChips([]);
+  document.getElementById('proc-photo-ref').style.display = 'none';
+  openModal('modal-proc');
+  setTimeout(() => document.getElementById('proc-name').focus(), 100);
+}
+
+function openEditProcModal(id) {
+  const proc = (schema.procedures||[]).find(p => p.id === id);
+  if (!proc) return;
+  document.getElementById('modal-proc-title').textContent = 'Modifier la procédure';
+  document.getElementById('proc-edit-id').value = id;
+  document.getElementById('proc-name').value = proc.name;
+  document.getElementById('proc-type').value = proc.type;
+  document.getElementById('proc-desc').value = proc.description || '';
+  document.getElementById('proc-tables').value = (proc.tables||[]).join(', ');
+  document.getElementById('proc-body').value = proc.body || '';
+  const pl = document.getElementById('params-list');
+  pl.innerHTML = '';
+  (proc.parameters||[]).forEach(p => addParamRow(p.name, p.type, p.mode));
+  renderFlagChips(proc.flags || []);
+  document.getElementById('proc-photo-ref').style.display = 'none';
+  openModal('modal-proc');
+}
+
+function addParamRow(name='', type='INT', mode='IN') {
+  const row = document.createElement('div');
+  row.className = 'param-row';
+  row.innerHTML = `
+    <select class="param-mode">
+      <option${mode==='IN'?' selected':''}>IN</option>
+      <option${mode==='OUT'?' selected':''}>OUT</option>
+      <option${mode==='INOUT'?' selected':''}>INOUT</option>
+    </select>
+    <input class="param-name" type="text" placeholder="nom_param" value="${escHtml(name)}" />
+    <input class="param-type" type="text" placeholder="INT" value="${escHtml(type)}" />
+    <button class="rm-param" onclick="this.parentElement.remove()">✕</button>
+  `;
+  document.getElementById('params-list').appendChild(row);
+}
+
+function confirmSaveProc() {
+  const name = document.getElementById('proc-name').value.trim();
+  if (!name) { document.getElementById('proc-name').focus(); return; }
+
+  const params = Array.from(document.querySelectorAll('#params-list .param-row')).map(row => ({
+    mode: row.querySelector('.param-mode').value,
+    name: row.querySelector('.param-name').value.trim(),
+    type: row.querySelector('.param-type').value.trim()
+  })).filter(p => p.name);
+
+  const tablesRaw = document.getElementById('proc-tables').value;
+  const tables = tablesRaw.split(',').map(t=>t.trim()).filter(Boolean);
+
+  const proc = {
+    name,
+    type: document.getElementById('proc-type').value,
+    description: document.getElementById('proc-desc').value.trim(),
+    parameters: params,
+    tables,
+    flags: getFlagsFromChips(),
+    body: document.getElementById('proc-body').value,
+    updatedAt: new Date().toISOString().slice(0,10)
+  };
+
+  const editId = document.getElementById('proc-edit-id').value;
+  if (!schema.procedures) schema.procedures = [];
+
+  if (editId) {
+    const idx = schema.procedures.findIndex(p => p.id === editId);
+    if (idx !== -1) { proc.id = editId; schema.procedures[idx] = proc; }
+  } else {
+    proc.id = 'proc_' + Date.now();
+    proc.createdAt = proc.updatedAt;
+    schema.procedures.push(proc);
+  }
+
+  saveToStorage();
+  closeModal('modal-proc');
+  renderProcList(document.getElementById('proc-search').value);
+  showProcDetail(proc.id);
+}
+
+// ─── EXPORT PROCS ──────────────────────────────────────────────────────────
+function exportProcsJSON() {
+  const blob = new Blob([JSON.stringify(schema.procedures||[], null, 2)], {type:'application/json'});
+  download(blob, 'procedures.json');
+}
+
+function openImportProcsModal() {
+  document.getElementById('import-procs-text').value = '';
+  document.getElementById('proc-file-name-display').textContent = '';
+  document.getElementById('import-procs-file-input').value = '';
+  openModal('modal-import-procs');
+}
+
+function onProcFileSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  document.getElementById('proc-file-name-display').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = e => { document.getElementById('import-procs-text').value = e.target.result; };
+  reader.readAsText(file);
+}
+
+function onProcFileDrop(event) {
+  event.preventDefault();
+  document.querySelector('#proc-drop-zone').style.borderColor = '#2d3150';
+  const file = event.dataTransfer.files[0];
+  if (!file) return;
+  document.getElementById('proc-file-name-display').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = e => { document.getElementById('import-procs-text').value = e.target.result; };
+  reader.readAsText(file);
+}
+
+function mergeProcedures(data) {
+  const incoming = data.procedures || (Array.isArray(data) ? data : null);
+  if (!incoming) { alert('Format invalide — le JSON doit contenir une clé "procedures"'); return; }
+  if (!schema.procedures) schema.procedures = [];
+  let added = 0, updated = 0;
+  incoming.forEach(p => {
+    if (!p.id) p.id = 'proc_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const idx = schema.procedures.findIndex(x => x.id === p.id);
+    if (idx === -1) { schema.procedures.push(p); added++; }
+    else { schema.procedures[idx] = p; updated++; }
+  });
+  saveToStorage();
+  renderProcList();
+  alert(`Import OK : ${added} ajoutée(s), ${updated} mise(s) à jour.`);
+}
+
+function confirmImportProcs() {
+  const txt = document.getElementById('import-procs-text').value.trim();
+  if (!txt) { alert('Aucune donnée à importer.'); return; }
+  try { mergeProcedures(JSON.parse(txt)); closeModal('modal-import-procs'); }
+  catch(e) { alert('JSON invalide : ' + e.message); }
+}
+
+function importProcsJSON() { openImportProcsModal(); }
+
+function exportProcsSQL() {
+  let sql = '';
+  (schema.procedures||[]).forEach(proc => {
+    sql += `-- ${proc.description || proc.name}\n`;
+    if (proc.type === 'PROCEDURE') {
+      sql += `DELIMITER //\n\n`;
+      const params = (proc.parameters||[]).map(p=>`${p.mode} ${p.name} ${p.type}`).join(', ');
+      sql += `CREATE PROCEDURE \`${proc.name}\`(${params})\n`;
+      sql += `${proc.body || 'BEGIN\nEND'}\n//\n\nDELIMITER ;\n\n`;
+    } else {
+      sql += `-- Requête SQL : ${proc.name}\n`;
+      sql += `${proc.body || ''}\n\n`;
+    }
+  });
+  const blob = new Blob([sql], {type:'text/plain'});
+  download(blob, 'procedures.sql');
+}
+</script>
+
+<!-- Service Worker inline : mise en cache pour fonctionnement hors-ligne -->
+<script>
+if ('serviceWorker' in navigator) {
+  const swCode = `
+    const CACHE = 'sql-schema-v1';
+    self.addEventListener('install', e => {
+      e.waitUntil(caches.open(CACHE).then(c => c.addAll([self.location.pathname])));
+      self.skipWaiting();
+    });
+    self.addEventListener('activate', e => {
+      e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));
+      self.clients.claim();
+    });
+    self.addEventListener('fetch', e => {
+      e.respondWith(caches.match(e.request).then(r => r || fetch(e.request).catch(() => caches.match(e.request))));
+    });
+  `;
+  const blob = new Blob([swCode], {type: 'application/javascript'});
+  const swUrl = URL.createObjectURL(blob);
+  navigator.serviceWorker.register(swUrl).catch(() => {});
+}
+</script>
+</body>
+</html>
