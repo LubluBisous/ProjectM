@@ -537,12 +537,25 @@
     padding: 10px 12px;
     border-radius: 7px;
     cursor: pointer;
-    margin-bottom: 4px;
-    border: 1px solid transparent;
+    margin-bottom: 6px;
+    border: 1px solid #252840;
+    border-left: 3px solid #2d3150;
+    background: #161929;
     transition: all .12s;
+    box-shadow: 0 1px 5px rgba(0,0,0,.25);
   }
-  .proc-item:hover { background: #1a1d2e; border-color: #2d3150; }
-  .proc-item.active { background: #1e2240; border-color: #7c8cf8; }
+  .proc-item:hover { background: #1a1d2e; border-color: #3a3f6e; border-left-color: inherit; }
+  .proc-item.active { background: #1e2240; border-color: #7c8cf8; border-left-width: 3px; }
+  /* Left-accent color per type */
+  .proc-item.type-procedure          { border-left-color: #63b3ed; }
+  .proc-item.type-requete            { border-left-color: #68d391; }
+  .proc-item.type-ci                 { border-left-color: #fc8181; }
+  .proc-item.type-excel              { border-left-color: #9ae6b4; }
+  .proc-item.type-datadictionary     { border-left-color: #d6bcfa; }
+  .proc-item.type-module_referentiel { border-left-color: #fbd38d; }
+  .proc-item.type-murex              { border-left-color: #90cdf4; }
+  .proc-item.type-priceselection     { border-left-color: #e9d8fd; }
+  .proc-item.type-id_mdp             { border-left-color: #a0aec0; }
   .proc-item-name {
     font-size: 13px;
     font-weight: 600;
@@ -961,6 +974,45 @@
   #settings-api-key { font-family: monospace; letter-spacing: .04em; }
   .api-key-hint { font-size: 11px; color: #4a5568; margin-top: 6px; line-height: 1.6; }
 
+  /* ── THEME TOGGLE SWITCH ── */
+  #theme-switch {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+    flex-shrink: 0;
+  }
+  #theme-switch-icon {
+    font-size: 13px;
+    width: 18px;
+    text-align: center;
+    transition: opacity .2s;
+  }
+  #theme-switch-track {
+    width: 44px;
+    height: 24px;
+    background: #3a3f6e;
+    border-radius: 12px;
+    position: relative;
+    transition: background .25s;
+    border: 1px solid #4a5180;
+    flex-shrink: 0;
+  }
+  #theme-switch-thumb {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 16px;
+    height: 16px;
+    background: #a0aec0;
+    border-radius: 50%;
+    transition: transform .25s cubic-bezier(.4,0,.2,1), background .25s;
+    box-shadow: 0 1px 5px rgba(0,0,0,.5);
+  }
+  body.light #theme-switch-track { background: #7c8cf8; border-color: #6675e0; }
+  body.light #theme-switch-thumb { transform: translateX(20px); background: #fff; box-shadow: 0 1px 6px rgba(100,120,240,.4); }
+
   /* ── TOAST ── */
   #app-toast { position:fixed; bottom:28px; left:50%; transform:translateX(-50%); background:#252840; border:1px solid #4a5568; border-radius:10px; padding:10px 22px; font-size:13px; color:#e2e8f0; z-index:9999; opacity:0; transition:opacity .3s; pointer-events:none; white-space:nowrap; }
 
@@ -1031,8 +1083,9 @@
   /* minimap */
   body.light #minimap { background:rgba(232,236,248,.95); border-color:#c8d0ea; }
   /* proc items */
-  body.light .proc-item:hover { background:#dde3f5; border-color:#c8d0ea; }
-  body.light .proc-item.active { background:#d5dbf0; border-color:#7c8cf8; }
+  body.light .proc-item { background:#ffffff; border-color:#d8dff0; box-shadow:0 1px 5px rgba(0,0,0,.06); }
+  body.light .proc-item:hover { background:#f0f4ff; border-color:#b8c4e0; }
+  body.light .proc-item.active { background:#e8edfc; border-color:#7c8cf8; }
   body.light .proc-item-name { color:#1a1d2e; }
   body.light .proc-item-desc { color:#9098b8; }
   body.light .proc-item-meta { color:#c8d0ea; }
@@ -1108,7 +1161,11 @@
     <button class="btn btn-secondary" onclick="openImportProcsModal()">⬆ Import</button>
   </div>
   <span id="zoom-info" style="margin-left:auto;">Zoom: 100% | Tables: 0</span>
-  <button class="btn btn-secondary" id="light-mode-btn" onclick="toggleLightMode()" title="Mode clair / sombre" style="font-size:15px;padding:4px 10px;">☀️</button>
+  <div id="theme-switch" onclick="toggleLightMode()" title="Mode clair / sombre">
+    <span id="theme-switch-icon">🌙</span>
+    <div id="theme-switch-track"><div id="theme-switch-thumb"></div></div>
+    <span style="font-size:13px;">☀️</span>
+  </div>
 </div>
 
 <!-- TAB BAR -->
@@ -2515,8 +2572,8 @@ function renderProcList(filter = '', typeFilter = '', flagFilter = '') {
 
   procs.forEach(proc => {
     const item = document.createElement('div');
-    item.className = 'proc-item' + (selectedProcId === proc.id ? ' active' : '');
     const typeClass = procTypeClass(proc.type);
+    item.className = 'proc-item ' + typeClass + (selectedProcId === proc.id ? ' active' : '');
     const params = (proc.parameters||[]).length;
     const tables = (proc.tables||[]).length;
     const flags = proc.flags || [];
@@ -3139,16 +3196,14 @@ function showToast(msg) {
 // ─── LIGHT MODE ────────────────────────────────────────────────────────────
 function toggleLightMode() {
   const isLight = document.body.classList.toggle('light');
-  document.getElementById('light-mode-btn').textContent = isLight ? '🌙' : '☀️';
   document.querySelector('meta[name="theme-color"]').content = isLight ? '#e8ecf8' : '#0f1117';
   localStorage.setItem('lightMode', isLight ? '1' : '0');
+  // Le switch se met à jour via CSS (body.light #theme-switch-thumb)
 }
 
 function restoreLightMode() {
   if (localStorage.getItem('lightMode') === '1') {
     document.body.classList.add('light');
-    const btn = document.getElementById('light-mode-btn');
-    if (btn) btn.textContent = '🌙';
     document.querySelector('meta[name="theme-color"]').content = '#e8ecf8';
   }
 }
