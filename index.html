@@ -547,15 +547,15 @@
   .proc-item:hover { background: #1a1d2e; border-color: #3a3f6e; border-left-color: inherit; }
   .proc-item.active { background: #1e2240; border-color: #7c8cf8; border-left-width: 3px; }
   /* Left-accent color per type */
-  .proc-item.type-procedure          { border-left-color: #63b3ed; }
-  .proc-item.type-requete            { border-left-color: #68d391; }
-  .proc-item.type-ci                 { border-left-color: #fc8181; }
-  .proc-item.type-excel              { border-left-color: #9ae6b4; }
-  .proc-item.type-datadictionary     { border-left-color: #d6bcfa; }
-  .proc-item.type-module_referentiel { border-left-color: #fbd38d; }
-  .proc-item.type-murex              { border-left-color: #90cdf4; }
-  .proc-item.type-priceselection     { border-left-color: #e9d8fd; }
-  .proc-item.type-id_mdp             { border-left-color: #a0aec0; }
+  .proc-item.ptype-procedure          { border-left-color: #63b3ed; }
+  .proc-item.ptype-requete            { border-left-color: #68d391; }
+  .proc-item.ptype-ci                 { border-left-color: #fc8181; }
+  .proc-item.ptype-excel              { border-left-color: #9ae6b4; }
+  .proc-item.ptype-datadictionary     { border-left-color: #d6bcfa; }
+  .proc-item.ptype-module_referentiel { border-left-color: #fbd38d; }
+  .proc-item.ptype-murex              { border-left-color: #90cdf4; }
+  .proc-item.ptype-priceselection     { border-left-color: #e9d8fd; }
+  .proc-item.ptype-id_mdp             { border-left-color: #a0aec0; }
   .proc-item-name {
     font-size: 13px;
     font-weight: 600;
@@ -2573,7 +2573,8 @@ function renderProcList(filter = '', typeFilter = '', flagFilter = '') {
   procs.forEach(proc => {
     const item = document.createElement('div');
     const typeClass = procTypeClass(proc.type);
-    item.className = 'proc-item ' + typeClass + (selectedProcId === proc.id ? ' active' : '');
+    const ptypeClass = 'ptype-' + (proc.type||'').toLowerCase().replace(/[^a-z0-9]/g, '_');
+    item.className = 'proc-item ' + ptypeClass + (selectedProcId === proc.id ? ' active' : '');
     const params = (proc.parameters||[]).length;
     const tables = (proc.tables||[]).length;
     const flags = proc.flags || [];
