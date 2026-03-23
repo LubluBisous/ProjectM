@@ -438,7 +438,8 @@
     transition: border-color .12s;
     cursor: pointer;
   }
-  .rel-card:hover { border-color: #7c8cf8; }
+  .rel-card:hover { border-color: #7c8cf8; background: #1e2240; }
+  .rel-card:active { border-color: #7c8cf8; background: #252840; }
   .rel-card-arrow { font-size: 18px; color: #4a5568; flex-shrink: 0; }
   .rel-card-body { flex: 1; min-width: 0; }
   .rel-card-title { font-size: 13px; font-weight: 600; color: #e2e8f0; }
@@ -1107,7 +1108,8 @@
   body.light .param-table td { border-bottom-color:#edf0fc; color:#1a1d2e; }
   /* relation cards */
   body.light .rel-card { background:#f0f4ff; border-color:#c8d0ea; }
-  body.light .rel-card:hover { border-color:#7c8cf8; }
+  body.light .rel-card:hover { border-color:#7c8cf8; background:#e8ecfc; }
+  body.light .rel-card:active { border-color:#5b6ad8; background:#dde3f5; }
   body.light .rel-card-title { color:#1a1d2e; }
   body.light .rel-card-arrow { color:#9098b8; }
   body.light .rel-card-fields { color:#9098b8; }
@@ -1909,11 +1911,12 @@ function showTableDetail(tableId) {
     <div class="rel-grid">`;
   if (outgoing.length) {
     outgoing.forEach((rel, i) => {
+      const relIdx = schema.relations.indexOf(rel);
       const toTable = schema.tables.find(t => t.id === rel.toTable);
       const fromField = table.fields[rel.fromField];
       const toField   = toTable?.fields[rel.toField];
       const typeLabel = rel.type === 'many-to-one' ? 'N : 1' : rel.type === 'one-to-many' ? '1 : N' : '1 : 1';
-      html += `<div class="rel-card outgoing" onclick="showTableDetail('${rel.toTable}')">
+      html += `<div class="rel-card outgoing" data-rel-idx="${relIdx}" title="Appuyer pour modifier ou naviguer">
         <span class="rel-card-arrow">→</span>
         <div class="rel-card-body">
           <div class="rel-card-title">
@@ -1924,6 +1927,7 @@ function showTableDetail(tableId) {
           <div class="rel-card-fields">FK → ${escHtml(toTable?.name||'?')} (${escHtml(toField?.type||'?')})</div>
         </div>
         <span class="rel-type-badge">${typeLabel}</span>
+        <span style="color:#4a5568;font-size:11px;margin-left:6px;" title="Cliquer pour modifier">⋮</span>
       </div>`;
     });
   } else {
@@ -1938,11 +1942,12 @@ function showTableDetail(tableId) {
     <div class="rel-grid">`;
   if (incoming.length) {
     incoming.forEach(rel => {
+      const relIdx = schema.relations.indexOf(rel);
       const fromTable = schema.tables.find(t => t.id === rel.fromTable);
       const fromField = fromTable?.fields[rel.fromField];
       const toField   = table.fields[rel.toField];
       const typeLabel = rel.type === 'many-to-one' ? 'N : 1' : rel.type === 'one-to-many' ? '1 : N' : '1 : 1';
-      html += `<div class="rel-card incoming" onclick="showTableDetail('${rel.fromTable}')">
+      html += `<div class="rel-card incoming" data-rel-idx="${relIdx}" title="Appuyer pour modifier ou naviguer">
         <span class="rel-card-arrow">←</span>
         <div class="rel-card-body">
           <div class="rel-card-title">
@@ -1953,6 +1958,7 @@ function showTableDetail(tableId) {
           <div class="rel-card-fields">${escHtml(fromTable?.name||'?')} utilise cette table comme référence</div>
         </div>
         <span class="rel-type-badge">${typeLabel}</span>
+        <span style="color:#4a5568;font-size:11px;margin-left:6px;" title="Cliquer pour modifier">⋮</span>
       </div>`;
     });
   } else {
@@ -1961,6 +1967,45 @@ function showTableDetail(tableId) {
   html += `</div></div>`;
 
   document.getElementById('schema-view-body').innerHTML = html;
+
+  // ── WIRE REL-CARD INTERACTION (click / long-press) ──
+  document.querySelectorAll('#schema-view-body .rel-card[data-rel-idx]').forEach(card => {
+    const idx = parseInt(card.dataset.relIdx, 10);
+
+    // Desktop: left click → context menu
+    card.addEventListener('click', e => {
+      e.stopPropagation();
+      const r = card.getBoundingClientRect();
+      showRelMenu(r.left + r.width / 2, r.top, idx);
+    });
+
+    // Mobile: short tap → menu, long press (600ms) → edit modal directly
+    let _lpt = null, _lpd = false, _tx = 0, _ty = 0;
+    card.addEventListener('touchstart', e => {
+      _tx = e.touches[0].clientX;
+      _ty = e.touches[0].clientY;
+      _lpd = false;
+      _lpt = setTimeout(() => {
+        _lpt = null; _lpd = true;
+        if (navigator.vibrate) navigator.vibrate(40);
+        openEditRelationModal(idx);
+      }, 600);
+    }, { passive: true });
+    card.addEventListener('touchend', e => {
+      const had = !!_lpt;
+      if (_lpt) { clearTimeout(_lpt); _lpt = null; }
+      if (!_lpd && had) {
+        e.preventDefault();
+        showRelMenu(_tx, _ty, idx);
+      }
+    }, { passive: false });
+    card.addEventListener('touchmove', () => {
+      if (_lpt) { clearTimeout(_lpt); _lpt = null; }
+    }, { passive: true });
+    card.addEventListener('touchcancel', () => {
+      if (_lpt) { clearTimeout(_lpt); _lpt = null; }
+    }, { passive: true });
+  });
 }
 
 function deleteField(tableId, idx) {
@@ -2049,6 +2094,7 @@ function createTableCard(table) {
 
 function renderRelations() {
   const svg = document.getElementById('svg-layer');
+  if (!svg) return; // canvas removed — no-op
   // Clear old lines
   svg.querySelectorAll('.relation-group').forEach(el => el.remove());
 
@@ -2400,7 +2446,6 @@ function openEditRelationModal(idx) {
   const rel = schema.relations[idx];
   if (!rel) return;
   _selectedRelIdx = idx;
-  renderRelations(); // highlight the selected line
 
   const opts = schema.tables.map(t => `<option value="${t.id}">${escHtml(t.name)}</option>`).join('');
   document.getElementById('edit-rel-idx').value = idx;
@@ -2472,7 +2517,7 @@ function deleteRelationFromModal() {
 function closeEditRelModal() {
   _selectedRelIdx = null;
   closeModal('modal-edit-relation');
-  renderRelations();
+  if (selectedTable) showTableDetail(selectedTable);
 }
 
 // ─── MENU CONTEXTUEL RELATION ──────────────────────────────────────────────
@@ -3713,7 +3758,8 @@ function applyExtractedSchema() {
   saveToStorage();
   closeModal('modal-extract-sql');
   _pendingExtraction = null;
-  renderAll();
+  render();
+  if (selectedTable) showTableDetail(selectedTable);
 
   const parts = [];
   if (addedTables)    parts.push(`${addedTables} table${addedTables>1?'s':''} créée${addedTables>1?'s':''}`);
