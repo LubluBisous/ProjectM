@@ -960,14 +960,12 @@
   <!-- Procedures tab buttons -->
   <div id="toolbar-proc" style="display:none;align-items:center;gap:10px;">
     <button class="btn btn-primary" onclick="openAddProcModal()">+ Procédure</button>
-    <button class="btn btn-secondary" onclick="triggerPhotoCapture()" title="Prendre une photo de référence pour saisir une procédure">📷 Photo</button>
+    <button class="btn btn-secondary" onclick="openModal('modal-prompt')" title="Obtenir le prompt à copier dans Claude pour importer une procédure depuis une photo">📋 Prompt Claude</button>
     <div class="sep"></div>
     <button class="btn btn-secondary" onclick="exportProcsJSON()">⬇ JSON</button>
     <button class="btn btn-secondary" onclick="exportProcsSQL()">⬇ SQL</button>
     <button class="btn btn-secondary" onclick="openImportProcsModal()">⬆ Import</button>
   </div>
-  <!-- Hidden camera/gallery input -->
-  <input type="file" id="photo-capture-input" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoCapture(event)">
   <span id="zoom-info" style="margin-left:auto;">Zoom: 100% | Tables: 0</span>
 </div>
 
@@ -1208,21 +1206,53 @@
   </div>
 </div>
 
-<!-- MODAL: PHOTO VIEWER -->
-<div class="modal-overlay" id="modal-photo">
-  <div class="modal">
-    <div id="photo-modal-header">
-      <span style="font-weight:600;font-size:14px;">📷 Photo de référence</span>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-primary" onclick="openAddProcModalWithPhoto()">+ Créer procédure</button>
-        <button class="btn btn-secondary" onclick="closeModal('modal-photo')">✕</button>
-      </div>
+<!-- MODAL: PROMPT CLAUDE -->
+<div class="modal-overlay" id="modal-prompt">
+  <div class="modal modal-lg">
+    <h2>📋 Prompt pour Claude</h2>
+    <p style="font-size:12px;color:#718096;margin-bottom:14px;line-height:1.6;">
+      Copie ce prompt, ouvre <strong>Claude</strong> sur ton mobile, colle le prompt, envoie la photo → Claude génère le JSON → copie le JSON → reviens ici → <strong>⬆ Import</strong> → colle → Importer.
+    </p>
+    <div style="position:relative;">
+      <pre id="prompt-text" style="background:#0d0f1c;border:1px solid #2d3150;border-radius:8px;padding:14px;font-size:11px;color:#a0aec0;white-space:pre-wrap;word-break:break-word;max-height:380px;overflow-y:auto;line-height:1.6;font-family:monospace;">Tu es un expert en extraction de code SQL à partir de captures d'écran MX3 (Murex).
+
+Analyse la photo que je t'envoie et génère un fichier JSON importable dans mon application.
+
+RÈGLES ABSOLUES :
+- Recopie le SQL EXACTEMENT comme visible sur la photo, caractère par caractère
+- Ne corrige pas, n'interprète pas, n'ajoute rien
+- Si une partie est coupée par le bord de l'écran, indique [suite coupée à droite] à cet endroit précis
+- Le "name" = valeur du champ Label visible dans la fenêtre MX3
+- Si plusieurs requêtes séparées sont visibles, mets-les toutes dans "body" séparées par une ligne vide
+- Les commentaires SQL (--) doivent être recopiés tels quels
+
+FORMAT JSON À RETOURNER (retourne UNIQUEMENT ce JSON brut, sans texte avant ni après, sans markdown) :
+{
+  "procedures": [
+    {
+      "id": "proc_[label_sans_espaces_ni_accents]",
+      "name": "[valeur exacte du champ Label]",
+      "type": "REQUETE",
+      "description": "[valeur du champ Description si visible, sinon vide]",
+      "body": "[SQL copié fidèlement depuis la photo]",
+      "parameters": [],
+      "tables": [],
+      "flags": []
+    }
+  ]
+}</pre>
+      <button onclick="copyPrompt()" id="copy-prompt-btn" class="btn btn-primary" style="position:absolute;top:10px;right:10px;font-size:11px;padding:5px 10px;">📋 Copier</button>
     </div>
-    <div id="photo-modal-img-wrap">
-      <img id="photo-modal-img" src="" alt="photo" />
+    <div style="margin-top:14px;padding:10px 14px;background:#0d0f1c;border-radius:8px;border-left:3px solid #7c8cf8;font-size:11px;color:#718096;line-height:1.7;">
+      <strong style="color:#a0aec0;">Workflow mobile :</strong><br>
+      1. Copie ce prompt<br>
+      2. Ouvre <strong style="color:#e2e8f0;">claude.ai</strong> dans le navigateur mobile<br>
+      3. Nouveau chat → colle le prompt → envoie la photo<br>
+      4. Copie le JSON répondu par Claude<br>
+      5. Reviens ici → <strong style="color:#e2e8f0;">⬆ Import</strong> → colle dans la zone texte → <strong style="color:#e2e8f0;">Importer</strong>
     </div>
-    <div style="padding:8px 16px;font-size:11px;color:#4a5568;text-align:center;background:#1a1d2e;">
-      Consultez la photo et saisissez le SQL dans le formulaire · La photo restera visible comme référence
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-prompt')">Fermer</button>
     </div>
   </div>
 </div>
@@ -1231,17 +1261,6 @@
 <div class="modal-overlay" id="modal-proc">
   <div class="modal modal-lg">
     <h2 id="modal-proc-title">Nouvelle procédure</h2>
-    <!-- Photo reference (shown when opened from camera) -->
-    <div id="proc-photo-ref">
-      <div id="proc-photo-ref-bar">
-        <span>📷 Photo de référence</span>
-        <span style="display:flex;gap:6px;">
-          <button class="btn btn-secondary" style="padding:2px 8px;font-size:10px;" onclick="openPhotoViewer()">⛶ Agrandir</button>
-          <button class="btn btn-secondary" style="padding:2px 8px;font-size:10px;" onclick="clearProcPhoto()">✕ Retirer</button>
-        </span>
-      </div>
-      <img id="proc-photo-ref-img" src="" alt="référence" onclick="openPhotoViewer()" />
-    </div>
     <input type="hidden" id="proc-edit-id" />
     <div class="form-row">
       <div class="form-group" style="flex:2">
@@ -2100,7 +2119,6 @@ function escHtml(str) {
 
 let selectedProcId = null;
 let currentTab = 'schema';
-let capturedPhotoSrc = null;
 
 // ─── MOBILE HELPERS ────────────────────────────────────────────────────────
 function isMobile() { return window.innerWidth <= 768; }
@@ -2116,43 +2134,27 @@ function mobileProcBack() {
   );
 }
 
-// ─── CAMERA / PHOTO ────────────────────────────────────────────────────────
-function triggerPhotoCapture() {
-  document.getElementById('photo-capture-input').click();
-}
-
-function handlePhotoCapture(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    capturedPhotoSrc = e.target.result;
-    document.getElementById('photo-modal-img').src = capturedPhotoSrc;
-    openModal('modal-photo');
-  };
-  reader.readAsDataURL(file);
-  event.target.value = '';
-}
-
-function openPhotoViewer() {
-  if (capturedPhotoSrc) {
-    document.getElementById('photo-modal-img').src = capturedPhotoSrc;
-    openModal('modal-photo');
-  }
-}
-
-function openAddProcModalWithPhoto() {
-  closeModal('modal-photo');
-  openAddProcModal();
-  if (capturedPhotoSrc) {
-    document.getElementById('proc-photo-ref').style.display = 'block';
-    document.getElementById('proc-photo-ref-img').src = capturedPhotoSrc;
-  }
-}
-
-function clearProcPhoto() {
-  document.getElementById('proc-photo-ref').style.display = 'none';
-  document.getElementById('proc-photo-ref-img').src = '';
+// ─── PROMPT CLAUDE ─────────────────────────────────────────────────────────
+function copyPrompt() {
+  const text = document.getElementById('prompt-text').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copy-prompt-btn');
+    btn.textContent = '✅ Copié !';
+    setTimeout(() => { btn.textContent = '📋 Copier'; }, 2000);
+  }).catch(() => {
+    // Fallback pour navigateurs sans clipboard API
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    const btn = document.getElementById('copy-prompt-btn');
+    btn.textContent = '✅ Copié !';
+    setTimeout(() => { btn.textContent = '📋 Copier'; }, 2000);
+  });
 }
 
 // ─── TAB SWITCH ────────────────────────────────────────────────────────────
@@ -2446,7 +2448,6 @@ function openAddProcModal() {
   document.getElementById('proc-body').value = '';
   document.getElementById('params-list').innerHTML = '';
   renderFlagChips([]);
-  document.getElementById('proc-photo-ref').style.display = 'none';
   openModal('modal-proc');
   setTimeout(() => document.getElementById('proc-name').focus(), 100);
 }
@@ -2465,7 +2466,6 @@ function openEditProcModal(id) {
   pl.innerHTML = '';
   (proc.parameters||[]).forEach(p => addParamRow(p.name, p.type, p.mode));
   renderFlagChips(proc.flags || []);
-  document.getElementById('proc-photo-ref').style.display = 'none';
   openModal('modal-proc');
 }
 
