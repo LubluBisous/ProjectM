@@ -1158,6 +1158,7 @@
     <div class="sep"></div>
     <button class="btn btn-secondary" id="toolbar-proc-json-btn" onclick="exportProcsJSON()" title="Exporte la procédure sélectionnée, le résultat filtré, ou toutes les procédures">⬇ JSON</button>
     <button class="btn btn-secondary" onclick="exportProcsSQL()">⬇ SQL</button>
+    <button class="btn btn-secondary" onclick="openExtractModal(null)" title="Extraire tables, champs et relations depuis les requêtes SQL">🔍 → Schéma</button>
     <button class="btn btn-secondary" onclick="openImportProcsModal()">⬆ Import</button>
   </div>
   <span id="zoom-info" style="margin-left:auto;">Zoom: 100% | Tables: 0</span>
@@ -1249,6 +1250,7 @@
           <div id="proc-view-desc"><!-- filled by JS --></div>
         </div>
         <div id="proc-view-actions">
+          <button class="btn btn-secondary" id="proc-extract-btn" title="Extraire tables, champs et relations SQL vers le Schéma">🔍 Schéma</button>
           <button class="btn btn-secondary" id="proc-export-btn">⬇ JSON</button>
           <button class="btn btn-secondary" id="proc-edit-btn">✎ Modifier</button>
           <button class="btn btn-danger" id="proc-delete-btn">✕</button>
@@ -1612,6 +1614,20 @@ FORMAT JSON À RETOURNER (retourne UNIQUEMENT ce JSON brut, sans texte avant ni 
     <!-- Fallback hint -->
     <div style="margin-top:14px;padding:8px 12px;background:#0d0f1c;border-radius:6px;font-size:11px;color:#4a5568;border-left:2px solid #2d3150;">
       Pas de clé API ? Utilisez le <strong style="color:#a0aec0;cursor:pointer;" onclick="closeModal('modal-claude-ai');openModal('modal-prompt');">mode manuel (Prompt)</strong> pour envoyer les photos sur claude.ai.
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: EXTRACTION SQL → SCHÉMA -->
+<div class="modal-overlay" id="modal-extract-sql">
+  <div class="modal modal-lg" style="max-width:640px;min-width:520px;">
+    <h2>🔍 Extraction SQL → Schéma</h2>
+    <div id="extract-sql-source" style="font-size:11px;color:#718096;margin-bottom:12px;"></div>
+    <div id="extract-sql-results" style="max-height:360px;overflow-y:auto;padding-right:4px;"></div>
+    <div id="extract-sql-summary" style="margin-top:12px;padding:10px 14px;background:#0d0f1a;border-radius:6px;font-size:12px;color:#a0aec0;border-left:3px solid #2d3150;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-extract-sql')">Annuler</button>
+      <button class="btn btn-primary" id="extract-sql-apply-btn" onclick="applyExtractedSchema()">✔ Appliquer au Schéma</button>
     </div>
   </div>
 </div>
@@ -2649,6 +2665,7 @@ function showProcDetail(id) {
     + (procFlags.length ? `<span style="margin-left:8px;display:inline-flex;gap:5px;flex-wrap:wrap;">${procFlags.map(f=>`<span class="flag-chip-view" style="${flagBadgeStyle(f)}">🏷 ${escHtml(f)}</span>`).join('')}</span>` : '');
   document.getElementById('proc-view-desc').textContent = proc.description || '';
 
+  document.getElementById('proc-extract-btn').onclick = () => openExtractModal(id);
   document.getElementById('proc-export-btn').onclick = () => exportSingleProcJSON(id);
   document.getElementById('proc-edit-btn').onclick = () => openEditProcModal(id);
   document.getElementById('proc-delete-btn').onclick = () => {
@@ -3207,6 +3224,255 @@ function restoreLightMode() {
     document.body.classList.add('light');
     document.querySelector('meta[name="theme-color"]').content = '#e8ecf8';
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ─── SQL EXTRACTION → SCHÉMA ────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+let _pendingExtraction = null;
+
+const _SQL_KW = new Set(('SELECT FROM WHERE JOIN LEFT RIGHT INNER OUTER CROSS FULL ON SET UPDATE INSERT INTO DELETE VALUES AND OR NOT IN IS NULL AS GROUP BY ORDER HAVING UNION ALL DISTINCT TOP LIMIT WITH CASE WHEN THEN ELSE END BETWEEN LIKE EXISTS CREATE ALTER DROP TABLE INDEX VIEW PROCEDURE FUNCTION BEGIN COMMIT ROLLBACK DECLARE RETURNS RETURN IF TRIM TO_DATE TO_CHAR SUBSTR INSTR COALESCE DECODE SIGN MAX MIN COUNT SUM AVG ROWNUM SYSDATE NVL CAST CONVERT ABS LENGTH REPLACE CONCAT UPPER LOWER ROUND DATE INT INTEGER VARCHAR NUMBER CHAR FLOAT DECIMAL BIGINT SMALLINT NVARCHAR TEXT BOOLEAN TIMESTAMP DATETIME ASC DESC OFFSET FETCH NEXT ROWS ONLY NULLS FIRST LAST ADD CONSTRAINT PRIMARY KEY FOREIGN REFERENCES UNIQUE DEFAULT CHECK NATURAL STRAIGHT_JOIN APPLY USING OVER PARTITION WITHIN PRECEDING FOLLOWING UNBOUNDED CURRENT ROW RECURSIVE INTERSECT EXCEPT MINUS PIVOT UNPIVOT TABLESAMPLE NOLOCK NOEXPAND').split(' '));
+
+function _isSQLKW(w) { return _SQL_KW.has(w.toUpperCase()); }
+
+function _stripSchema(raw) {
+  // "MX.TABLE#DATA#SECURITI_DBF" → "TABLE#DATA#SECURITI_DBF"
+  return raw.replace(/^[\w]+\./, '').toUpperCase();
+}
+
+function _parseSingleStmt(sql, tables, relations) {
+  // Clean SQL: remove block comments, line comments, string literals, @params
+  let s = sql
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/--[^\n]*/g, ' ')
+    .replace(/'[^']*'/g, "'?'")
+    .replace(/@[\w:]+/g, '?');
+
+  const aliasMap = new Map(); // ALIAS → UPPER_TABLE_NAME
+
+  // ── Extract table names from FROM/JOIN/UPDATE/INSERT INTO ──────────────
+  const fromJoinRe = /\b(?:FROM|JOIN)\s+([\w#]+(?:\.[\w#]+)*)\s*/gi;
+  let m;
+  while ((m = fromJoinRe.exec(s)) !== null) {
+    const tname = _stripSchema(m[1]);
+    if (!tname || _isSQLKW(tname) || tname === '?') continue;
+    if (!tables.has(tname)) tables.set(tname, { name: tname, fields: new Set() });
+    // Look for alias immediately after the table name
+    const after = s.slice(m.index + m[0].length);
+    const aliasM = after.match(/^([A-Za-z_]\w*)\b/);
+    if (aliasM) {
+      const alias = aliasM[1].toUpperCase();
+      if (!_isSQLKW(alias)) aliasMap.set(alias, tname);
+    }
+  }
+
+  const updRe = /\bUPDATE\s+([\w#]+(?:\.[\w#]+)*)\b/gi;
+  while ((m = updRe.exec(s)) !== null) {
+    const tname = _stripSchema(m[1]);
+    if (tname && !_isSQLKW(tname)) {
+      if (!tables.has(tname)) tables.set(tname, { name: tname, fields: new Set() });
+      // check for alias
+      const after = s.slice(m.index + m[0].length).trimStart();
+      const aliasM = after.match(/^([A-Za-z_]\w*)\b/);
+      if (aliasM && !_isSQLKW(aliasM[1])) aliasMap.set(aliasM[1].toUpperCase(), tname);
+    }
+  }
+
+  const insRe = /\bINSERT\s+INTO\s+([\w#]+(?:\.[\w#]+)*)\b/gi;
+  while ((m = insRe.exec(s)) !== null) {
+    const tname = _stripSchema(m[1]);
+    if (tname && !_isSQLKW(tname)) {
+      if (!tables.has(tname)) tables.set(tname, { name: tname, fields: new Set() });
+    }
+  }
+
+  // ── Extract field references: alias.FIELD ────────────────────────────
+  const fieldRe = /\b([A-Za-z_]\w*)\.([A-Za-z_]\w+)\b/g;
+  while ((m = fieldRe.exec(s)) !== null) {
+    const prefix = m[1].toUpperCase();
+    const field = m[2].toUpperCase();
+    if (_isSQLKW(field) || _isSQLKW(prefix)) continue;
+    const tname = aliasMap.get(prefix) || (tables.has(prefix) ? prefix : null);
+    if (tname && tables.has(tname)) tables.get(tname).fields.add(field);
+  }
+
+  // ── Extract relations: aliasA.field = aliasB.field ──────────────────
+  const eqRe = /\b([A-Za-z_]\w*)\.([A-Za-z_]\w+)\s*=\s*([A-Za-z_]\w*)\.([A-Za-z_]\w+)\b/g;
+  while ((m = eqRe.exec(s)) !== null) {
+    const la = m[1].toUpperCase(), lf = m[2].toUpperCase();
+    const ra = m[3].toUpperCase(), rf = m[4].toUpperCase();
+    if (_isSQLKW(lf) || _isSQLKW(rf) || _isSQLKW(la) || _isSQLKW(ra)) continue;
+    const lt = aliasMap.get(la) || (tables.has(la) ? la : null);
+    const rt = aliasMap.get(ra) || (tables.has(ra) ? ra : null);
+    if (!lt || !rt || lt === rt) continue;
+    const dup = relations.some(r =>
+      (r.fromTable===lt && r.fromField===lf && r.toTable===rt && r.toField===rf) ||
+      (r.fromTable===rt && r.fromField===rf && r.toTable===lt && r.toField===lf)
+    );
+    if (!dup) relations.push({ fromTable:lt, fromField:lf, toTable:rt, toField:rf });
+  }
+}
+
+function parseSQLToSchema(sqlList) {
+  const tables = new Map();    // upperName → { name, fields: Set }
+  const relations = [];
+  // Split each body on ';' to handle multi-statement procedures
+  const stmts = sqlList.flatMap(sql => sql.split(';').map(s => s.trim()).filter(Boolean));
+  for (const stmt of stmts) _parseSingleStmt(stmt, tables, relations);
+  return { tables, relations };
+}
+
+function openExtractModal(singleProcId) {
+  let procs = [];
+  let sourceName = '';
+  if (singleProcId) {
+    const p = (schema.procedures||[]).find(x => x.id === singleProcId);
+    if (p) { procs = [p]; sourceName = p.name; }
+  } else {
+    const search = (document.getElementById('proc-search')?.value||'').trim().toLowerCase();
+    const typeFilter = document.getElementById('proc-filter-type')?.value||'';
+    const flagFilter = document.getElementById('proc-filter-flag')?.value||'';
+    const hasFilter = search || typeFilter || flagFilter;
+    const all = schema.procedures||[];
+    procs = hasFilter ? all.filter(p => {
+      const matchText = !search || (p.name||'').toLowerCase().includes(search) || (p.description||'').toLowerCase().includes(search);
+      const matchType = !typeFilter || (p.type||'').toUpperCase() === typeFilter.toUpperCase();
+      const matchFlag = !flagFilter || (p.flags||[]).includes(flagFilter);
+      return matchText && matchType && matchFlag;
+    }) : all;
+    sourceName = hasFilter
+      ? `${procs.length} procédure(s) filtrée(s)`
+      : `toutes les procédures (${procs.length})`;
+  }
+  if (!procs.length) { showToast('Aucune procédure à analyser'); return; }
+  const sqlList = procs.map(p => p.body||'').filter(s => s.trim());
+  if (!sqlList.length) { showToast('Aucun corps SQL trouvé'); return; }
+  const extracted = parseSQLToSchema(sqlList);
+  _pendingExtraction = extracted;
+  renderExtractModal(extracted, sourceName);
+  openModal('modal-extract-sql');
+}
+
+function renderExtractModal(extracted, sourceName) {
+  document.getElementById('extract-sql-source').textContent = `Source : ${sourceName}`;
+  const { tables, relations } = extracted;
+  let html = '';
+  if (tables.size === 0) {
+    html = '<p style="color:#718096;font-size:13px;padding:8px 0;">Aucune table détectée dans le SQL.</p>';
+  } else {
+    tables.forEach((tbl, key) => {
+      const existing = (schema.tables||[]).find(t => t.name.toUpperCase() === key);
+      const isNew = !existing;
+      const existingFieldNames = new Set((existing?.fields||[]).map(f => f.name.toUpperCase()));
+      const newFields = [...tbl.fields].filter(f => !existingFieldNames.has(f));
+      const allFields = [...tbl.fields].sort();
+      const badge = isNew
+        ? `<span style="background:#1e3a2e;color:#68d391;padding:1px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.5px;">NOUVEAU</span>`
+        : `<span style="background:#1e2555;color:#7c8cf8;padding:1px 7px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.5px;">MISE À JOUR</span>`;
+      const newInfo = !isNew ? `<span style="font-size:11px;color:#718096;">${newFields.length} nouveau${newFields.length>1?'x':''} champ${newFields.length>1?'s':''}</span>` : '';
+      html += `<div style="border:1px solid #252840;border-radius:6px;margin-bottom:10px;overflow:hidden;">
+        <div style="background:#1e2030;padding:7px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          ${badge}
+          <strong style="font-size:13px;font-family:monospace;">${escHtml(tbl.name)}</strong>
+          ${newInfo}
+        </div>
+        <div style="padding:8px 12px;">`;
+      if (allFields.length === 0) {
+        html += `<span style="font-size:11px;color:#4a5568;font-style:italic;">Aucun champ détecté</span>`;
+      } else {
+        html += `<div style="display:flex;flex-wrap:wrap;gap:4px;">`;
+        allFields.forEach(f => {
+          const isNF = !existingFieldNames.has(f);
+          const st = isNF
+            ? 'background:#1e3a2e;color:#68d391;border:1px solid #2d6a4f;'
+            : 'background:#161929;color:#718096;border:1px solid #252840;';
+          html += `<span style="${st}padding:2px 8px;border-radius:4px;font-size:11px;font-family:monospace;">${escHtml(f)}</span>`;
+        });
+        html += `</div>`;
+      }
+      html += `</div></div>`;
+    });
+  }
+  document.getElementById('extract-sql-results').innerHTML = html;
+
+  // Relations summary
+  const validRels = relations.filter(r => tables.has(r.fromTable) && tables.has(r.toTable));
+  const newTables = [...tables.values()].filter(t => !(schema.tables||[]).find(x => x.name.toUpperCase() === t.name.toUpperCase()));
+  let totalNewFields = 0;
+  tables.forEach((tbl, key) => {
+    const existing = (schema.tables||[]).find(t => t.name.toUpperCase() === key);
+    const ef = new Set((existing?.fields||[]).map(f => f.name.toUpperCase()));
+    totalNewFields += [...tbl.fields].filter(f => !ef.has(f)).length;
+  });
+
+  document.getElementById('extract-sql-summary').innerHTML =
+    `<strong>${tables.size}</strong> table${tables.size>1?'s':''} détectée${tables.size>1?'s':''} · ` +
+    `<strong>${newTables.length}</strong> nouvelle${newTables.length>1?'s':''} · ` +
+    `<strong>${totalNewFields}</strong> nouveau${totalNewFields>1?'x':''} champ${totalNewFields>1?'s':''} · ` +
+    `<strong>${validRels.length}</strong> relation${validRels.length>1?'s':''}`;
+
+  document.getElementById('extract-sql-apply-btn').disabled = (tables.size === 0);
+}
+
+function applyExtractedSchema() {
+  if (!_pendingExtraction) return;
+  const { tables, relations } = _pendingExtraction;
+  if (!schema.tables) schema.tables = [];
+  if (!schema.relations) schema.relations = [];
+
+  let addedTables=0, updatedTables=0, addedFields=0, addedRelations=0;
+  const tableMap = new Map(); // upperName → schema table obj
+
+  // 1. Create or update tables & fields
+  tables.forEach((tbl, key) => {
+    let st = schema.tables.find(t => t.name.toUpperCase() === key);
+    if (!st) {
+      const usedX = schema.tables.map(t => t.x);
+      const baseX = usedX.length ? Math.max(...usedX) + 280 : 80;
+      const id = tbl.name.toLowerCase().replace(/[^a-z0-9]/g,'_') + '_' + Date.now() + '_' + (Math.random()*1e6|0);
+      st = { id, name: tbl.name, x: baseX, y: 80 + addedTables * 50, fields: [] };
+      schema.tables.push(st);
+      addedTables++;
+    } else {
+      updatedTables++;
+    }
+    tableMap.set(key, st);
+    const existNames = new Set(st.fields.map(f => f.name.toUpperCase()));
+    tbl.fields.forEach(fname => {
+      if (!existNames.has(fname)) {
+        st.fields.push({ name: fname, type: 'VARCHAR', pk: false, nullable: true, unique: false, autoincrement: false, description: '', foreignKey: null });
+        addedFields++;
+      }
+    });
+  });
+
+  // 2. Create relations (store as field index pairs)
+  relations.forEach(rel => {
+    const ft = tableMap.get(rel.fromTable);
+    const tt = tableMap.get(rel.toTable);
+    if (!ft || !tt) return;
+    const fi = ft.fields.findIndex(f => f.name.toUpperCase() === rel.fromField);
+    const ti = tt.fields.findIndex(f => f.name.toUpperCase() === rel.toField);
+    if (fi < 0 || ti < 0) return;
+    const dup = schema.relations.some(r =>
+      r.fromTable===ft.id && r.fromField===fi && r.toTable===tt.id && r.toField===ti
+    );
+    if (dup) return;
+    schema.relations.push({ fromTable: ft.id, fromField: fi, toTable: tt.id, toField: ti, type: 'MANY_TO_ONE' });
+    addedRelations++;
+  });
+
+  saveToStorage();
+  closeModal('modal-extract-sql');
+  _pendingExtraction = null;
+  renderAll();
+
+  const parts = [];
+  if (addedTables)    parts.push(`${addedTables} table${addedTables>1?'s':''} créée${addedTables>1?'s':''}`);
+  if (updatedTables)  parts.push(`${updatedTables} mise${updatedTables>1?'s':''} à jour`);
+  if (addedFields)    parts.push(`${addedFields} champ${addedFields>1?'s':''}`);
+  if (addedRelations) parts.push(`${addedRelations} relation${addedRelations>1?'s':''}`);
+  showToast('✅ ' + (parts.length ? parts.join(' · ') : 'Aucun changement'));
 }
 </script>
 
