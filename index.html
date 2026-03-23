@@ -963,6 +963,122 @@
 
   /* ── TOAST ── */
   #app-toast { position:fixed; bottom:28px; left:50%; transform:translateX(-50%); background:#252840; border:1px solid #4a5568; border-radius:10px; padding:10px 22px; font-size:13px; color:#e2e8f0; z-index:9999; opacity:0; transition:opacity .3s; pointer-events:none; white-space:nowrap; }
+
+  /* ══════════════════════════════════════
+     LIGHT MODE
+  ══════════════════════════════════════ */
+  body.light { background:#f0f4ff; color:#1a1d2e; }
+  body.light #toolbar { background:#e8ecf8; border-bottom-color:#c8d0ea; }
+  body.light #toolbar h1 { color:#5b6ad8; }
+  body.light .btn-secondary { background:#dde3f5; color:#3a4580; }
+  body.light .btn-secondary:hover { background:#c8d0ea; color:#1a1d2e; }
+  body.light .sep { background:#c8d0ea; }
+  body.light #zoom-info { color:#9098b8; }
+  body.light #tab-bar { background:#e8ecf8; border-bottom-color:#c8d0ea; }
+  body.light .tab-btn { color:#9098b8; }
+  body.light .tab-btn:hover { color:#5b6ad8; background:#dde3f5; }
+  body.light .tab-btn.active { color:#5b6ad8; border-bottom-color:#5b6ad8; background:#dde3f5; }
+  body.light #schema-panel, body.light #proc-panel { background:#f0f4ff; }
+  body.light #schema-sidebar, body.light #proc-sidebar { background:#e8ecf8; border-right-color:#c8d0ea; }
+  body.light #schema-sidebar-header, body.light #proc-sidebar-header { border-bottom-color:#c8d0ea; }
+  body.light #schema-search, body.light #proc-search { background:#f8faff; border-color:#c8d0ea; color:#1a1d2e; }
+  body.light .sidebar-filter-sel { background:#f0f4ff; color:#3a4580; border-color:#c8d0ea; }
+  body.light #schema-table-list::-webkit-scrollbar-thumb,
+  body.light #proc-list::-webkit-scrollbar-thumb { background:#c8d0ea; }
+  body.light .schema-table-item:hover { background:#dde3f5; border-color:#c8d0ea; }
+  body.light .schema-table-item.active { background:#d5dbf0; border-color:#7c8cf8; }
+  body.light .schema-table-item-name { color:#1a1d2e; }
+  body.light .schema-table-item-meta { color:#9098b8; }
+  body.light #schema-detail, body.light #proc-detail { background:#f8faff; }
+  body.light #schema-empty, body.light #proc-empty { color:#c8d0ea; }
+  body.light #schema-view-header, body.light #proc-view-header { border-bottom-color:#c8d0ea; }
+  body.light #schema-view-name { color:#1a1d2e; }
+  body.light #proc-view-name { color:#1a1d2e; }
+  body.light #proc-view-desc { color:#4a5568; }
+  body.light #schema-view-body::-webkit-scrollbar-thumb,
+  body.light #proc-view-body::-webkit-scrollbar-thumb { background:#c8d0ea; }
+  body.light .schema-section-title, body.light .proc-section-title { color:#9098b8; }
+  /* table cards */
+  body.light .table-card { background:#ffffff; border-color:#c8d0ea; box-shadow:0 4px 24px rgba(0,0,0,.07); }
+  body.light .table-card:hover { box-shadow:0 6px 32px rgba(124,140,248,.15); }
+  body.light .table-card.selected { border-color:#7c8cf8; }
+  body.light .table-header { background:#edf0fc; }
+  body.light .table-name { color:#5b6ad8; }
+  body.light .icon-btn { color:#9098b8; }
+  body.light .icon-btn:hover { background:#dde3f5; color:#1a1d2e; }
+  body.light .field-row { border-bottom-color:#edf0fc; }
+  body.light .field-row:hover { background:#f0f4ff; }
+  body.light .field-name { color:#1a1d2e; }
+  body.light .field-type { color:#9098b8; }
+  body.light .add-field-row { color:#9098b8; border-top-color:#c8d0ea; }
+  body.light .add-field-row:hover { color:#5b6ad8; background:#f0f4ff; }
+  body.light .relation-line { stroke:#a0aac8; }
+  /* modals */
+  body.light .modal { background:#ffffff; border-color:#c8d0ea; box-shadow:0 20px 60px rgba(0,0,0,.12); }
+  body.light .modal h2 { color:#5b6ad8; }
+  body.light .form-group label { color:#4a5568; }
+  body.light .form-group input, body.light .form-group select { background:#f0f4ff; border-color:#c8d0ea; color:#1a1d2e; }
+  body.light .form-group input:focus, body.light .form-group select:focus { border-color:#7c8cf8; }
+  body.light .modal-lg textarea { background:#f5f7ff; border-color:#c8d0ea; color:#1a1d2e; }
+  body.light .param-row input, body.light .param-row select { background:#f0f4ff; border-color:#c8d0ea; color:#1a1d2e; }
+  /* context menu */
+  body.light #context-menu { background:#ffffff; border-color:#c8d0ea; box-shadow:0 8px 32px rgba(0,0,0,.1); }
+  body.light .ctx-item { color:#1a1d2e; }
+  body.light .ctx-item:hover { background:#dde3f5; }
+  body.light .ctx-sep { background:#c8d0ea; }
+  /* tooltip */
+  body.light #tooltip { background:#ffffff; border-color:#c8d0ea; color:#4a5568; }
+  /* minimap */
+  body.light #minimap { background:rgba(232,236,248,.95); border-color:#c8d0ea; }
+  /* proc items */
+  body.light .proc-item:hover { background:#dde3f5; border-color:#c8d0ea; }
+  body.light .proc-item.active { background:#d5dbf0; border-color:#7c8cf8; }
+  body.light .proc-item-name { color:#1a1d2e; }
+  body.light .proc-item-desc { color:#9098b8; }
+  body.light .proc-item-meta { color:#c8d0ea; }
+  body.light .proc-meta-tag { background:#e8ecf8; border-color:#c8d0ea; color:#9098b8; }
+  /* tables & params */
+  body.light .fields-table th { background:#edf0fc; color:#9098b8; border-bottom-color:#c8d0ea; }
+  body.light .fields-table td { border-bottom-color:#edf0fc; }
+  body.light .fields-table tbody tr:hover td { background:#f0f4ff; }
+  body.light .param-table th { background:#edf0fc; color:#9098b8; border-bottom-color:#c8d0ea; }
+  body.light .param-table td { border-bottom-color:#edf0fc; color:#1a1d2e; }
+  /* relation cards */
+  body.light .rel-card { background:#f0f4ff; border-color:#c8d0ea; }
+  body.light .rel-card:hover { border-color:#7c8cf8; }
+  body.light .rel-card-title { color:#1a1d2e; }
+  body.light .rel-card-arrow { color:#9098b8; }
+  body.light .rel-card-fields { color:#9098b8; }
+  body.light .rel-type-badge { background:#e8ecf8; color:#4a5568; }
+  body.light .table-tag { background:#f0f4ff; border-color:#c8d0ea; }
+  /* code */
+  body.light .code-block { background:#f5f7ff; border-color:#c8d0ea; color:#1a1d2e; }
+  body.light .sql-kw   { color:#3b5bd9; }
+  body.light .sql-fn   { color:#2a8a4a; }
+  body.light .sql-str  { color:#b35800; }
+  body.light .sql-num  { color:#7b4fb5; }
+  body.light .sql-cmt  { color:#9098b8; font-style:italic; }
+  body.light .sql-type { color:#c53030; }
+  /* flags */
+  body.light #flags-chips { background:#f0f4ff; border-color:#c8d0ea; }
+  body.light #flag-new-input { background:#f0f4ff; border-color:#c8d0ea; color:#1a1d2e; }
+  /* photo modal */
+  body.light #proc-photo-ref { border-color:#c8d0ea; }
+  body.light #proc-photo-ref-bar { background:#edf0fc; color:#4a5568; }
+  body.light #proc-photo-ref img { background:#f0f4ff; }
+  body.light #photo-modal-header { background:#f0f4ff; border-bottom-color:#c8d0ea; }
+  body.light #photo-modal-img-wrap { background:#f0f4ff; }
+  /* claude AI */
+  body.light #claude-result-text { background:#f5f7ff; border-color:#c8d0ea; color:#2a7a3a; }
+  body.light #claude-add-photo-btn { background:#f5f7ff; border-color:#c8d0ea; color:#9098b8; }
+  body.light .claude-thumb-wrap { border-color:#c8d0ea; }
+  body.light #claude-no-key { background:#fff0f0; }
+  /* toast */
+  body.light #app-toast { background:#ffffff; border-color:#c8d0ea; color:#1a1d2e; }
+  /* settings */
+  body.light .api-key-hint { color:#9098b8; }
+  /* scrollbars */
+  body.light ::-webkit-scrollbar-thumb { background:#c8d0ea; }
 </style>
 </head>
 <body>
@@ -987,11 +1103,12 @@
     <button class="btn btn-secondary" onclick="openClaudeAIModal()" title="Analyser une photo avec Claude IA et importer directement">🤖 Claude IA</button>
     <button class="btn btn-secondary" onclick="openModal('modal-prompt')" title="Obtenir le prompt à copier dans Claude pour import manuel">📋 Prompt</button>
     <div class="sep"></div>
-    <button class="btn btn-secondary" onclick="exportProcsJSON()">⬇ JSON</button>
+    <button class="btn btn-secondary" id="toolbar-proc-json-btn" onclick="exportProcsJSON()" title="Exporte la procédure sélectionnée, le résultat filtré, ou toutes les procédures">⬇ JSON</button>
     <button class="btn btn-secondary" onclick="exportProcsSQL()">⬇ SQL</button>
     <button class="btn btn-secondary" onclick="openImportProcsModal()">⬆ Import</button>
   </div>
   <span id="zoom-info" style="margin-left:auto;">Zoom: 100% | Tables: 0</span>
+  <button class="btn btn-secondary" id="light-mode-btn" onclick="toggleLightMode()" title="Mode clair / sombre" style="font-size:15px;padding:4px 10px;">☀️</button>
 </div>
 
 <!-- TAB BAR -->
@@ -1480,14 +1597,60 @@ let ctxTableId = null;
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  restoreLightMode();
   loadFromStorage();
   renderSchemaList();
+  setupClaudeLogo();
   document.addEventListener('click', closeContextMenu);
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { closeAllModals(); closeContextMenu(); }
     if (e.key === 'Delete' && selectedTable && currentTab === 'schema') deleteTable(selectedTable);
   });
 });
+
+// ─── CLAUDE LOGO (favicon + PWA icon) ─────────────────────────────────────────
+function setupClaudeLogo() {
+  // Approximation du logo Anthropic : "A" blanc sur fond orange terracotta
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">'
+    + '<rect width="96" height="96" rx="20" fill="#D4761B"/>'
+    // Lettre A stylisée (fill-rule evenodd = trou à l\'intérieur)
+    + '<path fill-rule="evenodd" fill="white" d="'
+    + 'M48 12 L78 82 H64 L57 63 H39 L32 82 H18 Z '   // contour extérieur du A
+    + 'M48 30 L43 57 H53 Z'                            // trou intérieur du A
+    + '"/>'
+    + '</svg>';
+
+  const iconUrl = 'data:image/svg+xml,' + encodeURIComponent(svg);
+
+  // Favicon (onglet navigateur)
+  const favicon = document.createElement('link');
+  favicon.rel = 'icon';
+  favicon.type = 'image/svg+xml';
+  favicon.href = iconUrl;
+  document.head.appendChild(favicon);
+
+  // Apple Touch Icon (iOS home screen)
+  const apple = document.createElement('link');
+  apple.rel = 'apple-touch-icon';
+  apple.href = iconUrl;
+  document.head.appendChild(apple);
+
+  // Mise à jour du manifest PWA (icône sur l'écran d'accueil Android)
+  const manifestEl = document.querySelector("link[rel='manifest']");
+  if (manifestEl) {
+    const manifest = {
+      name: 'SQL Schema Visualizer',
+      short_name: 'SQL Schema',
+      start_url: '.',
+      display: 'standalone',
+      background_color: '#0f1117',
+      theme_color: '#0f1117',
+      description: 'Visualiseur de schémas SQL et procédures',
+      icons: [{ src: iconUrl, sizes: 'any', type: 'image/svg+xml' }]
+    };
+    manifestEl.href = 'data:application/manifest+json,' + encodeURIComponent(JSON.stringify(manifest));
+  }
+}
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
 function saveToStorage() {
@@ -2237,6 +2400,7 @@ function mobileProcBack() {
     document.getElementById('proc-filter-type').value,
     document.getElementById('proc-filter-flag').value
   );
+  updateProcJsonBtnLabel();
 }
 
 // ─── PROMPT CLAUDE ─────────────────────────────────────────────────────────
@@ -2379,6 +2543,26 @@ function filterProcs() {
     document.getElementById('proc-filter-type').value,
     document.getElementById('proc-filter-flag').value
   );
+  updateProcJsonBtnLabel();
+}
+
+// ─── UPDATE TOOLBAR JSON BUTTON LABEL ─────────────────────────────────────
+function updateProcJsonBtnLabel() {
+  const btn = document.getElementById('toolbar-proc-json-btn');
+  if (!btn) return;
+  const search     = (document.getElementById('proc-search')?.value || '').trim();
+  const typeFilter = document.getElementById('proc-filter-type')?.value || '';
+  const flagFilter = document.getElementById('proc-filter-flag')?.value || '';
+  if (selectedProcId) {
+    btn.textContent = '⬇ JSON (proc.)';
+    btn.title = 'Exporte la procédure sélectionnée';
+  } else if (search || typeFilter || flagFilter) {
+    btn.textContent = '⬇ JSON (filtre)';
+    btn.title = 'Exporte le résultat du filtre actif';
+  } else {
+    btn.textContent = '⬇ JSON';
+    btn.title = 'Exporte toutes les procédures';
+  }
 }
 
 // ─── SHOW PROCEDURE DETAIL ─────────────────────────────────────────────────
@@ -2388,6 +2572,7 @@ function showProcDetail(id) {
   if (!proc) return;
 
   renderProcList(document.getElementById('proc-search').value);
+  updateProcJsonBtnLabel();
 
   document.getElementById('proc-empty').style.display = 'none';
   const view = document.getElementById('proc-view');
@@ -2416,6 +2601,7 @@ function showProcDetail(id) {
       document.getElementById('proc-view').classList.remove('active');
       document.getElementById('proc-empty').style.display = '';
       renderProcList(document.getElementById('proc-search').value);
+      updateProcJsonBtnLabel();
     }
   };
 
@@ -2635,8 +2821,36 @@ function confirmSaveProc() {
 
 // ─── EXPORT PROCS ──────────────────────────────────────────────────────────
 function exportProcsJSON() {
-  const blob = new Blob([JSON.stringify(schema.procedures||[], null, 2)], {type:'application/json'});
+  // 1. Si une procédure est sélectionnée → exporte uniquement celle-ci
+  if (selectedProcId) {
+    exportSingleProcJSON(selectedProcId);
+    return;
+  }
+  // 2. Si un filtre est actif → exporte uniquement le résultat filtré
+  const search     = (document.getElementById('proc-search')?.value || '').trim();
+  const typeFilter = document.getElementById('proc-filter-type')?.value || '';
+  const flagFilter = document.getElementById('proc-filter-flag')?.value || '';
+  const hasFilter  = search || typeFilter || flagFilter;
+  if (hasFilter) {
+    const filtered = (schema.procedures || []).filter(p => {
+      const matchText = !search ||
+        p.name.toLowerCase().includes(search.toLowerCase()) ||
+        (p.description||'').toLowerCase().includes(search.toLowerCase()) ||
+        (p.flags||[]).some(f => f.toLowerCase().includes(search.toLowerCase()));
+      const matchType = !typeFilter || p.type === typeFilter;
+      const matchFlag = !flagFilter || (p.flags||[]).includes(flagFilter);
+      return matchText && matchType && matchFlag;
+    });
+    const blob = new Blob([JSON.stringify({ procedures: filtered }, null, 2)], {type:'application/json'});
+    download(blob, `procedures_filtre_${filtered.length}.json`);
+    showToast(`${filtered.length} procédure${filtered.length>1?'s':''} exportée${filtered.length>1?'s':''} (filtre actif)`);
+    return;
+  }
+  // 3. Sinon → exporte toutes les procédures
+  const all = schema.procedures || [];
+  const blob = new Blob([JSON.stringify({ procedures: all }, null, 2)], {type:'application/json'});
   download(blob, 'procedures.json');
+  showToast(`${all.length} procédure${all.length>1?'s':''} exportée${all.length>1?'s':''}`);
 }
 
 function exportSingleProcJSON(id) {
@@ -2920,6 +3134,23 @@ function showToast(msg) {
   toast.style.opacity = '1';
   clearTimeout(toast._t);
   toast._t = setTimeout(() => { toast.style.opacity = '0'; }, 2800);
+}
+
+// ─── LIGHT MODE ────────────────────────────────────────────────────────────
+function toggleLightMode() {
+  const isLight = document.body.classList.toggle('light');
+  document.getElementById('light-mode-btn').textContent = isLight ? '🌙' : '☀️';
+  document.querySelector('meta[name="theme-color"]').content = isLight ? '#e8ecf8' : '#0f1117';
+  localStorage.setItem('lightMode', isLight ? '1' : '0');
+}
+
+function restoreLightMode() {
+  if (localStorage.getItem('lightMode') === '1') {
+    document.body.classList.add('light');
+    const btn = document.getElementById('light-mode-btn');
+    if (btn) btn.textContent = '🌙';
+    document.querySelector('meta[name="theme-color"]').content = '#e8ecf8';
+  }
 }
 </script>
 
