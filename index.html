@@ -3374,28 +3374,93 @@ function renderClaudeThumbs() {
   document.getElementById('claude-analyze-btn').disabled = count === 0;
 }
 
+// ─── IMAGE RESIZE (avant envoi API) ──────────────────────────────────────────
+// Redimensionne une image à max 1120px (côté le plus long) et qualité 0.82 JPEG.
+// Claude Vision accepte jusqu'à 1568px mais 1120px est le sweet-spot coût/qualité.
+const IMG_MAX_PX   = 1120;   // px sur le côté le plus long
+const IMG_QUALITY  = 0.82;   // qualité JPEG (0–1)
+
+function resizeImageFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = ev => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let { naturalWidth: w, naturalHeight: h } = img;
+
+        // Calcule les nouvelles dimensions en gardant le ratio
+        if (w > IMG_MAX_PX || h > IMG_MAX_PX) {
+          if (w >= h) { h = Math.round(h * IMG_MAX_PX / w); w = IMG_MAX_PX; }
+          else         { w = Math.round(w * IMG_MAX_PX / h); h = IMG_MAX_PX; }
+        }
+
+        const cvs = document.createElement('canvas');
+        cvs.width  = w;
+        cvs.height = h;
+        const ctx = cvs.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+
+        // Toujours en JPEG pour maîtriser le poids (PNG source → JPEG envoyé)
+        const dataUrl = cvs.toDataURL('image/jpeg', IMG_QUALITY);
+        const b64     = dataUrl.split(',')[1];
+        const origKB  = Math.round(file.size / 1024);
+        const newKB   = Math.round(b64.length * 0.75 / 1024);
+
+        resolve({
+          base64:  b64,
+          mime:    'image/jpeg',
+          dataUrl,
+          origSize: origKB,
+          newSize:  newKB,
+          origW: img.naturalWidth, origH: img.naturalHeight,
+          newW: w, newH: h
+        });
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function onClaudePhotosAdded(input) {
   const files = Array.from(input.files);
   if (!files.length) return;
 
-  let loaded = 0;
-  files.forEach(file => {
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const dataUrl = ev.target.result;
-      const [, b64] = dataUrl.split(',');
-      _claudePhotos.push({ base64: b64, mime: file.type || 'image/jpeg', dataUrl });
-      loaded++;
-      if (loaded === files.length) {
+  const status = document.getElementById('claude-status');
+  status.textContent = '⏳ Redimensionnement en cours…';
+
+  let done = 0;
+  const results = new Array(files.length);
+
+  files.forEach((file, i) => {
+    resizeImageFile(file).then(photo => {
+      results[i] = photo;
+      done++;
+      if (done === files.length) {
+        // Filtre les null (si jamais), ajoute dans l'ordre
+        results.filter(Boolean).forEach(p => _claudePhotos.push(p));
         renderClaudeThumbs();
         document.getElementById('claude-result-wrap').style.display = 'none';
-        document.getElementById('claude-import-btn').style.display = 'none';
-        document.getElementById('claude-status').textContent =
-          `📷 ${_claudePhotos.length} photo(s) chargée(s) — cliquez sur Analyser`;
-        input.value = '';  // reset so same file can be re-added
+        document.getElementById('claude-import-btn').style.display  = 'none';
+
+        // Affiche un résumé du redimensionnement
+        const savings = results.filter(Boolean).map(p =>
+          p.origSize !== p.newSize
+            ? `${p.origW}×${p.origH}→${p.newW}×${p.newH} (${p.origSize}KB→${p.newKB}KB)`
+            : `${p.newW}×${p.newH} (${p.newKB}KB)`
+        ).join(' · ');
+
+        status.textContent =
+          `📷 ${_claudePhotos.length} photo(s) chargée(s) — ${savings} — cliquez sur Analyser`;
+        input.value = '';  // reset pour pouvoir re-sélectionner le même fichier
       }
-    };
-    reader.readAsDataURL(file);
+    }).catch(err => {
+      console.error('Resize error', err);
+      done++;
+      if (done === files.length && _claudePhotos.length) renderClaudeThumbs();
+    });
   });
 }
 
