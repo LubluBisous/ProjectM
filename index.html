@@ -1075,6 +1075,7 @@
           <div id="proc-view-desc"><!-- filled by JS --></div>
         </div>
         <div id="proc-view-actions">
+          <button class="btn btn-secondary" id="proc-export-btn">⬇ JSON</button>
           <button class="btn btn-secondary" id="proc-edit-btn">✎ Modifier</button>
           <button class="btn btn-danger" id="proc-delete-btn">✕</button>
         </div>
@@ -2405,6 +2406,7 @@ function showProcDetail(id) {
     + (procFlags.length ? `<span style="margin-left:8px;display:inline-flex;gap:5px;flex-wrap:wrap;">${procFlags.map(f=>`<span class="flag-chip-view" style="${flagBadgeStyle(f)}">🏷 ${escHtml(f)}</span>`).join('')}</span>` : '');
   document.getElementById('proc-view-desc').textContent = proc.description || '';
 
+  document.getElementById('proc-export-btn').onclick = () => exportSingleProcJSON(id);
   document.getElementById('proc-edit-btn').onclick = () => openEditProcModal(id);
   document.getElementById('proc-delete-btn').onclick = () => {
     if (confirm(`Supprimer la procédure "${proc.name}" ?`)) {
@@ -2635,6 +2637,18 @@ function confirmSaveProc() {
 function exportProcsJSON() {
   const blob = new Blob([JSON.stringify(schema.procedures||[], null, 2)], {type:'application/json'});
   download(blob, 'procedures.json');
+}
+
+function exportSingleProcJSON(id) {
+  const proc = (schema.procedures||[]).find(p => p.id === id);
+  if (!proc) return;
+  const filename = proc.name
+    .replace(/[\\/:*?"<>|]/g, '_')   // remove invalid filename chars
+    .replace(/\s+/g, '_')
+    .slice(0, 80)                      // max length
+    + '.json';
+  const blob = new Blob([JSON.stringify({ procedures: [proc] }, null, 2)], {type:'application/json'});
+  download(blob, filename);
 }
 
 function openImportProcsModal() {
