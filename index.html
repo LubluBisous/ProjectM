@@ -941,8 +941,15 @@
   }
 
   /* ── CLAUDE AI MODAL ── */
-  #claude-preview-wrap { margin-bottom: 10px; }
-  #claude-preview-img { max-height: 180px; max-width: 100%; border-radius: 8px; border: 1px solid #2d3150; display: block; margin: 0 auto; }
+  #claude-photos-grid { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+  .claude-thumb-wrap { position:relative; width:80px; height:80px; border-radius:6px; overflow:hidden; border:1px solid #2d3150; flex-shrink:0; }
+  .claude-thumb-wrap img { width:100%; height:100%; object-fit:cover; display:block; }
+  .claude-thumb-order { position:absolute; top:3px; left:3px; background:rgba(124,140,248,.9); color:#fff; font-size:10px; font-weight:700; border-radius:3px; padding:1px 5px; }
+  .claude-thumb-rm { position:absolute; top:3px; right:3px; background:rgba(229,62,62,.9); color:#fff; border:none; border-radius:3px; cursor:pointer; font-size:11px; width:18px; height:18px; display:flex; align-items:center; justify-content:center; line-height:1; }
+  .claude-thumb-rm:hover { background:#c53030; }
+  #claude-add-photo-btn { width:80px; height:80px; border:2px dashed #2d3150; border-radius:6px; background:#0d0f1a; color:#4a5568; cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; font-size:11px; flex-shrink:0; transition:border-color .15s; }
+  #claude-add-photo-btn:hover, #claude-add-photo-btn:active { border-color:#7c8cf8; color:#7c8cf8; }
+  #claude-add-photo-btn span { font-size:22px; }
   #claude-result-text { width: 100%; height: 140px; background: #0d0f1a; border: 1px solid #2d3150; border-radius: 6px; color: #68d391; font-family: 'Cascadia Code','Fira Code','Consolas',monospace; font-size: 11px; padding: 10px; outline: none; resize: vertical; }
   #claude-result-text:focus { border-color: #7c8cf8; }
   #claude-status { font-size: 12px; color: #718096; margin-top: 8px; min-height: 18px; line-height: 1.5; }
@@ -1396,36 +1403,40 @@ FORMAT JSON À RETOURNER (retourne UNIQUEMENT ce JSON brut, sans texte avant ni 
       ⚠️ Aucune clé API configurée.
       <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="closeModal('modal-claude-ai');openSettingsModal();">Configurer maintenant →</button>
     </div>
-    <!-- Photo picker -->
+
+    <!-- Photos section -->
     <div class="form-group">
-      <label>Photo de la procédure / requête SQL</label>
-      <label class="claude-photo-label" for="claude-photo-input">
-        <span style="font-size:30px;" id="claude-photo-icon">📷</span>
-        <span style="font-size:12px;color:#a0aec0;">Appuyer pour <strong>prendre une photo</strong> ou choisir depuis la galerie</span>
-        <span style="font-size:11px;color:#4a5568;">JPG, PNG, HEIC…</span>
-        <input type="file" id="claude-photo-input" accept="image/*" capture="environment" style="display:none" onchange="onClaudePhotoChange(this)" />
-      </label>
+      <label>Photos <span id="claude-photos-count" style="color:#4a5568;font-weight:400;font-size:11px;">(0 photo — ajoutez-en plusieurs si la procédure est sur plusieurs écrans)</span></label>
+      <div id="claude-photos-grid">
+        <!-- thumbnails rendered by JS -->
+        <button type="button" id="claude-add-photo-btn" onclick="document.getElementById('claude-photo-input').click()" title="Ajouter une photo">
+          <span>📷</span>
+          <span>Ajouter</span>
+        </button>
+      </div>
+      <!-- hidden input — no capture attr so user can choose gallery OR camera -->
+      <input type="file" id="claude-photo-input" accept="image/*" style="display:none" onchange="onClaudePhotosAdded(this)" multiple />
     </div>
-    <!-- Preview -->
-    <div id="claude-preview-wrap" style="display:none;">
-      <img id="claude-preview-img" src="" alt="aperçu" />
-    </div>
+
     <!-- Status -->
     <div id="claude-status"></div>
+
     <!-- Buttons row -->
     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center;">
       <button id="claude-analyze-btn" class="btn btn-primary" onclick="analyzeWithClaude()" disabled>🔍 Analyser avec Claude</button>
-      <button id="claude-import-btn" class="btn btn-primary" style="display:none;background:#276749;border-color:#276749;" onclick="importClaudeResult()">⬆ Importer le résultat</button>
+      <button id="claude-import-btn" class="btn btn-primary" style="display:none;background:#276749;" onclick="importClaudeResult()">⬆ Importer le résultat</button>
       <button class="btn btn-secondary" style="margin-left:auto;" onclick="closeModal('modal-claude-ai')">Fermer</button>
     </div>
+
     <!-- JSON result -->
     <div id="claude-result-wrap" style="display:none;margin-top:14px;">
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#4a5568;margin-bottom:6px;">JSON retourné par Claude <span style="font-weight:400;text-transform:none;">(modifiable avant import)</span></div>
       <textarea id="claude-result-text" spellcheck="false"></textarea>
     </div>
+
     <!-- Fallback hint -->
     <div style="margin-top:14px;padding:8px 12px;background:#0d0f1c;border-radius:6px;font-size:11px;color:#4a5568;border-left:2px solid #2d3150;">
-      Pas de clé API ? Utilisez le <strong style="color:#a0aec0;cursor:pointer;" onclick="closeModal('modal-claude-ai');openModal('modal-prompt');">mode manuel (Prompt)</strong> pour copier le prompt et envoyer la photo sur claude.ai.
+      Pas de clé API ? Utilisez le <strong style="color:#a0aec0;cursor:pointer;" onclick="closeModal('modal-claude-ai');openModal('modal-prompt');">mode manuel (Prompt)</strong> pour envoyer les photos sur claude.ai.
     </div>
   </div>
 </div>
@@ -2722,72 +2733,116 @@ function saveSettings() {
 function getApiKey()   { return localStorage.getItem('claude_api_key') || ''; }
 function getModel()    { return localStorage.getItem('claude_model') || 'claude-haiku-4-5'; }
 
-// ─── CLAUDE AI MODAL ───────────────────────────────────────────────────────
-let _claudeBase64 = null;
-let _claudeMime   = null;
+// ─── CLAUDE AI MODAL — MULTI-PHOTOS ────────────────────────────────────────
+let _claudePhotos = [];  // [{ base64, mime, dataUrl }, ...]
 
 function openClaudeAIModal() {
-  // Reset state
-  _claudeBase64 = null;
-  _claudeMime   = null;
+  _claudePhotos = [];
   document.getElementById('claude-photo-input').value = '';
-  document.getElementById('claude-preview-wrap').style.display = 'none';
-  document.getElementById('claude-preview-img').src = '';
   document.getElementById('claude-result-wrap').style.display = 'none';
   document.getElementById('claude-result-text').value = '';
   document.getElementById('claude-analyze-btn').disabled = true;
   document.getElementById('claude-analyze-btn').textContent = '🔍 Analyser avec Claude';
   document.getElementById('claude-import-btn').style.display = 'none';
   document.getElementById('claude-status').textContent = '';
-  document.getElementById('claude-photo-icon').textContent = '📷';
-  // Show/hide no-key warning
   document.getElementById('claude-no-key').style.display = getApiKey() ? 'none' : 'block';
+  renderClaudeThumbs();
   openModal('modal-claude-ai');
 }
 
-function onClaudePhotoChange(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = ev => {
-    const dataUrl = ev.target.result;
-    const [, b64] = dataUrl.split(',');
-    _claudeBase64 = b64;
-    _claudeMime   = file.type || 'image/jpeg';
-    // Preview
-    document.getElementById('claude-preview-img').src = dataUrl;
-    document.getElementById('claude-preview-wrap').style.display = 'block';
-    document.getElementById('claude-photo-icon').textContent = '✅';
-    // Reset result
+function renderClaudeThumbs() {
+  const grid = document.getElementById('claude-photos-grid');
+  // Keep the "add" button, rebuild the rest
+  const addBtn = document.getElementById('claude-add-photo-btn');
+  grid.innerHTML = '';
+
+  _claudePhotos.forEach((photo, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'claude-thumb-wrap';
+    wrap.innerHTML = `
+      <img src="${photo.dataUrl}" alt="photo ${i+1}" />
+      <span class="claude-thumb-order">${i + 1}</span>
+      <button class="claude-thumb-rm" onclick="removeClaudePhoto(${i})" title="Supprimer">✕</button>
+    `;
+    grid.appendChild(wrap);
+  });
+
+  grid.appendChild(addBtn);
+
+  const count = _claudePhotos.length;
+  document.getElementById('claude-photos-count').textContent =
+    count === 0 ? '(0 photo — ajoutez-en plusieurs si la procédure est sur plusieurs écrans)'
+    : count === 1 ? '(1 photo — ajoutez-en d\'autres si le SQL continue sur l\'écran suivant)'
+    : `(${count} photos — envoi groupé à Claude)`;
+
+  document.getElementById('claude-analyze-btn').disabled = count === 0;
+}
+
+function onClaudePhotosAdded(input) {
+  const files = Array.from(input.files);
+  if (!files.length) return;
+
+  let loaded = 0;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const dataUrl = ev.target.result;
+      const [, b64] = dataUrl.split(',');
+      _claudePhotos.push({ base64: b64, mime: file.type || 'image/jpeg', dataUrl });
+      loaded++;
+      if (loaded === files.length) {
+        renderClaudeThumbs();
+        document.getElementById('claude-result-wrap').style.display = 'none';
+        document.getElementById('claude-import-btn').style.display = 'none';
+        document.getElementById('claude-status').textContent =
+          `📷 ${_claudePhotos.length} photo(s) chargée(s) — cliquez sur Analyser`;
+        input.value = '';  // reset so same file can be re-added
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function removeClaudePhoto(idx) {
+  _claudePhotos.splice(idx, 1);
+  renderClaudeThumbs();
+  if (_claudePhotos.length === 0) {
+    document.getElementById('claude-status').textContent = '';
     document.getElementById('claude-result-wrap').style.display = 'none';
     document.getElementById('claude-import-btn').style.display = 'none';
-    document.getElementById('claude-analyze-btn').disabled = false;
-    document.getElementById('claude-status').textContent = '📷 Photo chargée — cliquez sur Analyser';
-  };
-  reader.readAsDataURL(file);
+  } else {
+    document.getElementById('claude-status').textContent =
+      `📷 ${_claudePhotos.length} photo(s) — cliquez sur Analyser`;
+  }
 }
 
 async function analyzeWithClaude() {
-  if (!_claudeBase64) return;
+  if (!_claudePhotos.length) return;
   const apiKey = getApiKey();
-  if (!apiKey) {
-    closeModal('modal-claude-ai');
-    openSettingsModal();
-    return;
-  }
+  if (!apiKey) { closeModal('modal-claude-ai'); openSettingsModal(); return; }
 
   const analyzeBtn = document.getElementById('claude-analyze-btn');
   const status = document.getElementById('claude-status');
-
   analyzeBtn.disabled = true;
   analyzeBtn.textContent = '⏳ Envoi à Claude…';
-  status.textContent = '⏳ Analyse en cours, veuillez patienter…';
+  const n = _claudePhotos.length;
+  status.textContent = `⏳ Analyse de ${n} photo${n > 1 ? 's' : ''} en cours…`;
   document.getElementById('claude-result-wrap').style.display = 'none';
   document.getElementById('claude-import-btn').style.display = 'none';
 
-  // Reuse the faithful-copy prompt from the prompt modal
   const promptText = document.getElementById('prompt-text').textContent.trim();
   const model = getModel();
+
+  // Build content array: all images first, then the prompt
+  // For multi-photo: add a note telling Claude the order matters
+  const imageBlocks = _claudePhotos.map((p, i) => ({
+    type: 'image',
+    source: { type: 'base64', media_type: p.mime, data: p.base64 }
+  }));
+
+  const textInstruction = n > 1
+    ? `Les ${n} photos ci-dessus montrent la MÊME procédure/requête sur plusieurs écrans consécutifs (photo 1 = début, photo ${n} = fin). Reconstitue le SQL complet dans l'ordre.\n\n` + promptText
+    : promptText;
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -2803,13 +2858,7 @@ async function analyzeWithClaude() {
         max_tokens: 4096,
         messages: [{
           role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: _claudeMime, data: _claudeBase64 }
-            },
-            { type: 'text', text: promptText }
-          ]
+          content: [...imageBlocks, { type: 'text', text: textInstruction }]
         }]
       })
     });
@@ -2822,15 +2871,13 @@ async function analyzeWithClaude() {
 
     const data = await resp.json();
     let text = (data.content?.[0]?.text || '').trim();
-
-    // Strip markdown code fences if present
     const fence = text.match(/```(?:json)?\s*([\s\S]+?)\s*```/);
     if (fence) text = fence[1].trim();
 
     document.getElementById('claude-result-text').value = text;
     document.getElementById('claude-result-wrap').style.display = 'block';
     document.getElementById('claude-import-btn').style.display = 'inline-flex';
-    status.textContent = '✅ Analyse terminée — vérifiez le JSON ci-dessous puis cliquez sur Importer';
+    status.textContent = '✅ Analyse terminée — vérifiez le JSON puis cliquez sur Importer';
     analyzeBtn.textContent = '🔄 Relancer';
     analyzeBtn.disabled = false;
 
