@@ -181,11 +181,13 @@
     stroke: #4a5568;
     stroke-width: 1.5;
     fill: none;
-    pointer-events: stroke;
+    pointer-events: none;
     cursor: pointer;
-    transition: stroke .15s;
+    transition: stroke .15s, stroke-width .15s;
   }
-  .relation-line:hover { stroke: #7c8cf8; stroke-width: 2.5; }
+  .relation-line:hover  { stroke: #7c8cf8; stroke-width: 2.5; }
+  .relation-line.rel-selected { stroke: #7c8cf8; stroke-width: 2.5; }
+  .relation-hit { stroke: transparent; stroke-width: 14; fill: none; cursor: pointer; pointer-events: all; }
   .relation-marker { fill: #4a5568; }
 
   /* ── MODAL ── */
@@ -1392,6 +1394,52 @@
   </div>
 </div>
 
+<!-- MODAL: EDIT RELATION -->
+<div class="modal-overlay" id="modal-edit-relation">
+  <div class="modal">
+    <h2>✎ Modifier la relation</h2>
+    <input type="hidden" id="edit-rel-idx">
+    <div class="form-row">
+      <div class="form-group">
+        <label>Table source</label>
+        <select id="edit-rel-from-table" onchange="updateEditRelFromFields()"></select>
+      </div>
+      <div class="form-group">
+        <label>Champ FK</label>
+        <select id="edit-rel-from-field"></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Table cible</label>
+        <select id="edit-rel-to-table" onchange="updateEditRelToFields()"></select>
+      </div>
+      <div class="form-group">
+        <label>Champ PK</label>
+        <select id="edit-rel-to-field"></select>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Type de relation</label>
+      <select id="edit-rel-type">
+        <option value="many-to-one">N → 1 (Many to One)</option>
+        <option value="one-to-one">1 → 1 (One to One)</option>
+        <option value="one-to-many">1 → N (One to Many)</option>
+        <option value="MANY_TO_ONE">N → 1 (Many to One)</option>
+        <option value="ONE_TO_ONE">1 → 1 (One to One)</option>
+        <option value="ONE_TO_MANY">1 → N (One to Many)</option>
+      </select>
+    </div>
+    <div class="modal-actions" style="justify-content:space-between;">
+      <button class="btn btn-danger" onclick="deleteRelationFromModal()">✕ Supprimer</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary" onclick="closeEditRelModal()">Annuler</button>
+        <button class="btn btn-primary" onclick="confirmEditRelation()">✔ Enregistrer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: RENAME TABLE -->
 <div class="modal-overlay" id="modal-rename-table">
   <div class="modal">
@@ -2015,18 +2063,28 @@ function renderRelations() {
     const cy = (y1 + y2) / 2;
     const dx = Math.abs(x2 - x1) * 0.4 + 40;
 
+    const d = `M${x1},${y1} C${x1+dx*(x1<x2?1:-1)},${y1} ${x2-dx*(x1<x2?1:-1)},${y2} ${x2},${y2}`;
+
     const path = document.createElementNS('http://www.w3.org/2000/svg','path');
-    path.setAttribute('d', `M${x1},${y1} C${x1+dx*(x1<x2?1:-1)},${y1} ${x2-dx*(x1<x2?1:-1)},${y2} ${x2},${y2}`);
-    path.setAttribute('class','relation-line');
+    path.setAttribute('d', d);
+    path.setAttribute('class', idx === _selectedRelIdx ? 'relation-line rel-selected' : 'relation-line');
     path.setAttribute('marker-end','url(#arrow-end)');
-    path.addEventListener('contextmenu', e => {
-      e.preventDefault();
-      if (confirm(`Supprimer la relation ${fromTable.name}.${fromTable.fields[rel.fromField]?.name} → ${toTable.name}.${toTable.fields[rel.toField]?.name} ?`)) {
-        schema.relations.splice(idx, 1);
-        saveToStorage();
-        render();
-      }
+
+    // Invisible thick hit area for easy clicking
+    const hit = document.createElementNS('http://www.w3.org/2000/svg','path');
+    hit.setAttribute('d', d);
+    hit.setAttribute('class','relation-hit');
+    hit.addEventListener('click', e => {
+      e.stopPropagation();
+      openEditRelationModal(idx);
     });
+    hit.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      openEditRelationModal(idx);
+    });
+    // Hover: highlight visible path
+    hit.addEventListener('mouseenter', () => { if (idx !== _selectedRelIdx) path.setAttribute('class','relation-line rel-selected'); });
+    hit.addEventListener('mouseleave', () => { if (idx !== _selectedRelIdx) path.setAttribute('class','relation-line'); });
 
     // Label
     const text = document.createElementNS('http://www.w3.org/2000/svg','text');
@@ -2035,10 +2093,13 @@ function renderRelations() {
     text.setAttribute('text-anchor','middle');
     text.setAttribute('font-size','10');
     text.setAttribute('fill','#4a5568');
-    text.textContent = rel.type === 'many-to-one' ? 'N:1' : rel.type === 'one-to-many' ? '1:N' : '1:1';
+    const typeLabel = rel.type === 'many-to-one' || rel.type === 'MANY_TO_ONE' ? 'N:1'
+                    : rel.type === 'one-to-many' || rel.type === 'ONE_TO_MANY' ? '1:N' : '1:1';
+    text.textContent = typeLabel;
 
     g.appendChild(path);
     g.appendChild(text);
+    g.appendChild(hit);  // hit area on top
     svg.appendChild(g);
   });
 }
@@ -2242,6 +2303,8 @@ function confirmAddField() {
 }
 
 // ─── RELATION CRUD ────────────────────────────────────────────────────────────
+let _selectedRelIdx = null;
+
 function openAddRelationModal() {
   populateTableSelects();
   openModal('modal-add-relation');
@@ -2290,6 +2353,86 @@ function confirmAddRelation() {
   closeModal('modal-add-relation');
   renderSchemaList();
   if (selectedTable) showTableDetail(selectedTable);
+}
+
+// ─── EDIT RELATION ─────────────────────────────────────────────────────────────
+function openEditRelationModal(idx) {
+  const rel = schema.relations[idx];
+  if (!rel) return;
+  _selectedRelIdx = idx;
+  renderRelations(); // highlight the selected line
+
+  const opts = schema.tables.map(t => `<option value="${t.id}">${escHtml(t.name)}</option>`).join('');
+  document.getElementById('edit-rel-idx').value = idx;
+
+  const fromSel = document.getElementById('edit-rel-from-table');
+  const toSel   = document.getElementById('edit-rel-to-table');
+  fromSel.innerHTML = opts;
+  toSel.innerHTML   = opts;
+  fromSel.value = rel.fromTable;
+  toSel.value   = rel.toTable;
+
+  updateEditRelFromFields(rel.fromField);
+  updateEditRelToFields(rel.toField);
+
+  document.getElementById('edit-rel-type').value = rel.type || 'many-to-one';
+  openModal('modal-edit-relation');
+}
+
+function updateEditRelFromFields(selectedIdx) {
+  const id = document.getElementById('edit-rel-from-table').value;
+  const table = schema.tables.find(t => t.id === id);
+  const sel = document.getElementById('edit-rel-from-field');
+  sel.innerHTML = table ? table.fields.map((f,i) => `<option value="${i}">${escHtml(f.name)}</option>`).join('') : '';
+  if (selectedIdx !== undefined) sel.value = selectedIdx;
+}
+
+function updateEditRelToFields(selectedIdx) {
+  const id = document.getElementById('edit-rel-to-table').value;
+  const table = schema.tables.find(t => t.id === id);
+  const sel = document.getElementById('edit-rel-to-field');
+  sel.innerHTML = table ? table.fields.map((f,i) => `<option value="${i}">${escHtml(f.name)}</option>`).join('') : '';
+  if (selectedIdx !== undefined) sel.value = selectedIdx;
+}
+
+function confirmEditRelation() {
+  const idx = parseInt(document.getElementById('edit-rel-idx').value);
+  if (isNaN(idx) || !schema.relations[idx]) return;
+  const rel = schema.relations[idx];
+  rel.fromTable = document.getElementById('edit-rel-from-table').value;
+  rel.fromField = parseInt(document.getElementById('edit-rel-from-field').value);
+  rel.toTable   = document.getElementById('edit-rel-to-table').value;
+  rel.toField   = parseInt(document.getElementById('edit-rel-to-field').value);
+  rel.type      = document.getElementById('edit-rel-type').value;
+  saveToStorage();
+  _selectedRelIdx = null;
+  closeModal('modal-edit-relation');
+  render();
+  if (selectedTable) showTableDetail(selectedTable);
+  showToast('✅ Relation mise à jour');
+}
+
+function deleteRelationFromModal() {
+  const idx = parseInt(document.getElementById('edit-rel-idx').value);
+  const rel = schema.relations[idx];
+  if (!rel) return;
+  const ft = schema.tables.find(t => t.id === rel.fromTable);
+  const tt = schema.tables.find(t => t.id === rel.toTable);
+  const label = `${ft?.name||'?'}.${ft?.fields[rel.fromField]?.name||'?'} → ${tt?.name||'?'}.${tt?.fields[rel.toField]?.name||'?'}`;
+  if (!confirm(`Supprimer la relation :\n${label} ?`)) return;
+  schema.relations.splice(idx, 1);
+  saveToStorage();
+  _selectedRelIdx = null;
+  closeModal('modal-edit-relation');
+  render();
+  if (selectedTable) showTableDetail(selectedTable);
+  showToast('🗑 Relation supprimée');
+}
+
+function closeEditRelModal() {
+  _selectedRelIdx = null;
+  closeModal('modal-edit-relation');
+  renderRelations();
 }
 
 // ─── CONTEXT MENU ─────────────────────────────────────────────────────────────
@@ -2438,6 +2581,7 @@ function closeModal(id) {
 }
 function closeAllModals() {
   document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
+  if (_selectedRelIdx !== null) { _selectedRelIdx = null; renderRelations(); }
 }
 
 // Enter key support for modals
