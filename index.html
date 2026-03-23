@@ -1652,6 +1652,19 @@ FORMAT JSON À RETOURNER (retourne UNIQUEMENT ce JSON brut, sans texte avant ni 
       <input type="file" id="claude-photo-input" accept="image/*" style="display:none" onchange="onClaudePhotosAdded(this)" multiple />
     </div>
 
+    <!-- Quality toggle -->
+    <div style="display:flex;align-items:center;gap:9px;margin-top:2px;margin-bottom:2px;">
+      <label style="display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none;font-size:12px;color:#718096;" title="Désactivez la compression si le texte SQL est mal reconnu (envoie l'image originale, coûte plus de tokens)">
+        <span style="position:relative;display:inline-block;width:34px;height:18px;flex-shrink:0;">
+          <input type="checkbox" id="claude-hq-toggle" style="opacity:0;width:0;height:0;position:absolute;" onchange="onHQToggleChange(this)">
+          <span id="claude-hq-track" style="position:absolute;inset:0;border-radius:9px;background:#2d3150;transition:background .2s;"></span>
+          <span id="claude-hq-thumb" style="position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:50%;background:#718096;transition:transform .2s,background .2s;"></span>
+        </span>
+        <span id="claude-hq-label">Compression activée — <strong style="color:#a0aec0;">économique</strong></span>
+      </label>
+      <span id="claude-hq-badge" style="display:none;font-size:10px;padding:2px 7px;border-radius:10px;background:#2d3150;color:#f6ad55;font-weight:600;letter-spacing:.04em;">ORIGINAL</span>
+    </div>
+
     <!-- Status -->
     <div id="claude-status"></div>
 
@@ -3424,40 +3437,89 @@ function resizeImageFile(file) {
   });
 }
 
+// ─── HQ TOGGLE ───────────────────────────────────────────────────────────────
+function onHQToggleChange(chk) {
+  const hq     = chk.checked;
+  const track  = document.getElementById('claude-hq-track');
+  const thumb  = document.getElementById('claude-hq-thumb');
+  const label  = document.getElementById('claude-hq-label');
+  const badge  = document.getElementById('claude-hq-badge');
+  track.style.background  = hq ? '#7c8cf8' : '#2d3150';
+  thumb.style.transform   = hq ? 'translateX(16px)' : 'translateX(0)';
+  thumb.style.background  = hq ? '#fff' : '#718096';
+  badge.style.display     = hq ? 'inline-block' : 'none';
+  label.innerHTML = hq
+    ? 'Haute qualité (sans compression) — <strong style="color:#f6ad55;">plus de tokens</strong>'
+    : 'Compression activée — <strong style="color:#a0aec0;">économique</strong>';
+  // Vide les photos déjà chargées pour forcer un rechargement avec le bon mode
+  if (_claudePhotos.length) {
+    _claudePhotos = [];
+    renderClaudeThumbs();
+    document.getElementById('claude-status').textContent =
+      '⚠️ Mode changé — veuillez recharger vos photos';
+  }
+}
+
+// Charge un fichier image en mode original (sans redimensionnement)
+function loadImageFileOriginal(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = ev => {
+      const dataUrl = ev.target.result;
+      const b64     = dataUrl.split(',')[1];
+      const kb      = Math.round(file.size / 1024);
+      // Dimensions via Image pour l'affichage
+      const img = new Image();
+      img.onload = () => resolve({
+        base64: b64, mime: file.type || 'image/jpeg', dataUrl,
+        origSize: kb, newKB: kb,
+        origW: img.naturalWidth, origH: img.naturalHeight,
+        newW:  img.naturalWidth, newH:  img.naturalHeight
+      });
+      img.onerror = reject;
+      img.src = dataUrl;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function onClaudePhotosAdded(input) {
   const files = Array.from(input.files);
   if (!files.length) return;
 
+  const hq     = document.getElementById('claude-hq-toggle').checked;
   const status = document.getElementById('claude-status');
-  status.textContent = '⏳ Redimensionnement en cours…';
+  status.textContent = hq ? '⏳ Chargement en qualité originale…' : '⏳ Redimensionnement en cours…';
 
   let done = 0;
   const results = new Array(files.length);
 
   files.forEach((file, i) => {
-    resizeImageFile(file).then(photo => {
+    const loader = hq ? loadImageFileOriginal(file) : resizeImageFile(file);
+    loader.then(photo => {
       results[i] = photo;
       done++;
       if (done === files.length) {
-        // Filtre les null (si jamais), ajoute dans l'ordre
         results.filter(Boolean).forEach(p => _claudePhotos.push(p));
         renderClaudeThumbs();
         document.getElementById('claude-result-wrap').style.display = 'none';
         document.getElementById('claude-import-btn').style.display  = 'none';
 
-        // Affiche un résumé du redimensionnement
-        const savings = results.filter(Boolean).map(p =>
-          p.origSize !== p.newSize
+        // Résumé : dimensions + poids ± indicateur mode
+        const modeTag = hq ? ' 🔓 original' : ' 🗜 compressé';
+        const info = results.filter(Boolean).map(p =>
+          p.origW !== p.newW
             ? `${p.origW}×${p.origH}→${p.newW}×${p.newH} (${p.origSize}KB→${p.newKB}KB)`
             : `${p.newW}×${p.newH} (${p.newKB}KB)`
         ).join(' · ');
 
         status.textContent =
-          `📷 ${_claudePhotos.length} photo(s) chargée(s) — ${savings} — cliquez sur Analyser`;
-        input.value = '';  // reset pour pouvoir re-sélectionner le même fichier
+          `📷 ${_claudePhotos.length} photo(s) chargée(s)${modeTag} — ${info} — cliquez sur Analyser`;
+        input.value = '';
       }
     }).catch(err => {
-      console.error('Resize error', err);
+      console.error('Load error', err);
       done++;
       if (done === files.length && _claudePhotos.length) renderClaudeThumbs();
     });
