@@ -1652,6 +1652,28 @@ FORMAT JSON À RETOURNER (retourne UNIQUEMENT ce JSON brut, sans texte avant ni 
       <input type="file" id="claude-photo-input" accept="image/*" style="display:none" onchange="onClaudePhotosAdded(this)" multiple />
     </div>
 
+    <!-- Model selector -->
+    <div style="margin-bottom:10px;">
+      <div style="font-size:11px;color:#4a5568;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Modèle</div>
+      <div id="claude-model-btns" style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button type="button" data-model="claude-haiku-4-5" onclick="selectClaudeModel('claude-haiku-4-5')"
+          style="flex:1;min-width:90px;padding:7px 10px;border-radius:8px;border:1.5px solid #2d3150;background:#0d0f1a;cursor:pointer;text-align:left;transition:border-color .15s,background .15s;">
+          <div style="font-size:12px;font-weight:600;color:#a0aec0;">⚡ Haiku</div>
+          <div style="font-size:10px;color:#4a5568;margin-top:1px;">Rapide · <span style="color:#68d391;">€</span></div>
+        </button>
+        <button type="button" data-model="claude-sonnet-4-6" onclick="selectClaudeModel('claude-sonnet-4-6')"
+          style="flex:1;min-width:90px;padding:7px 10px;border-radius:8px;border:1.5px solid #2d3150;background:#0d0f1a;cursor:pointer;text-align:left;transition:border-color .15s,background .15s;">
+          <div style="font-size:12px;font-weight:600;color:#a0aec0;">🧠 Sonnet</div>
+          <div style="font-size:10px;color:#4a5568;margin-top:1px;">Équilibré · <span style="color:#f6ad55;">€€</span></div>
+        </button>
+        <button type="button" data-model="claude-opus-4-6" onclick="selectClaudeModel('claude-opus-4-6')"
+          style="flex:1;min-width:90px;padding:7px 10px;border-radius:8px;border:1.5px solid #2d3150;background:#0d0f1a;cursor:pointer;text-align:left;transition:border-color .15s,background .15s;">
+          <div style="font-size:12px;font-weight:600;color:#a0aec0;">💎 Opus</div>
+          <div style="font-size:10px;color:#4a5568;margin-top:1px;">Puissant · <span style="color:#fc8181;">€€€</span></div>
+        </button>
+      </div>
+    </div>
+
     <!-- Quality toggle -->
     <div style="display:flex;align-items:center;gap:9px;margin-top:2px;margin-bottom:2px;">
       <label style="display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none;font-size:12px;color:#718096;" title="Désactivez la compression si le texte SQL est mal reconnu (envoie l'image originale, coûte plus de tokens)">
@@ -3342,6 +3364,24 @@ function saveSettings() {
 function getApiKey()   { return localStorage.getItem('claude_api_key') || ''; }
 function getModel()    { return localStorage.getItem('claude_model') || 'claude-haiku-4-5'; }
 
+function selectClaudeModel(model) {
+  localStorage.setItem('claude_model', model);
+  // Sync settings modal selector if open
+  const sel = document.getElementById('settings-model');
+  if (sel) sel.value = model;
+  // Highlight active button
+  document.querySelectorAll('#claude-model-btns button').forEach(btn => {
+    const active = btn.dataset.model === model;
+    btn.style.borderColor = active ? '#7c8cf8' : '#2d3150';
+    btn.style.background  = active ? '#1a1d3a' : '#0d0f1a';
+    btn.querySelector('div').style.color = active ? '#e2e8f0' : '#a0aec0';
+  });
+}
+
+function initClaudeModalModel() {
+  selectClaudeModel(getModel());
+}
+
 // ─── CLAUDE AI MODAL — MULTI-PHOTOS ────────────────────────────────────────
 let _claudePhotos = [];  // [{ base64, mime, dataUrl }, ...]
 
@@ -3357,6 +3397,7 @@ function openClaudeAIModal() {
   document.getElementById('claude-no-key').style.display = getApiKey() ? 'none' : 'block';
   renderClaudeThumbs();
   openModal('modal-claude-ai');
+  initClaudeModalModel();
 }
 
 function renderClaudeThumbs() {
@@ -3549,12 +3590,13 @@ async function analyzeWithClaude() {
   analyzeBtn.disabled = true;
   analyzeBtn.textContent = '⏳ Envoi à Claude…';
   const n = _claudePhotos.length;
-  status.textContent = `⏳ Analyse de ${n} photo${n > 1 ? 's' : ''} en cours…`;
   document.getElementById('claude-result-wrap').style.display = 'none';
   document.getElementById('claude-import-btn').style.display = 'none';
 
   const promptText = document.getElementById('prompt-text').textContent.trim();
   const model = getModel();
+  const modelLabel = model.includes('haiku') ? 'Haiku ⚡' : model.includes('sonnet') ? 'Sonnet 🧠' : 'Opus 💎';
+  status.textContent = `⏳ Analyse de ${n} photo${n > 1 ? 's' : ''} avec ${modelLabel}…`;
 
   // Build content array: all images first, then the prompt
   // For multi-photo: add a note telling Claude the order matters
