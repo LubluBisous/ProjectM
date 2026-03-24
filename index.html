@@ -1203,7 +1203,7 @@
   <div id="toolbar-proc" style="display:none;align-items:center;gap:10px;">
     <button class="btn btn-primary" onclick="openAddProcModal()">+ Procédure</button>
     <button class="btn btn-secondary" onclick="openClaudeAIModal()" title="Analyser une photo avec Claude IA et importer directement">🤖 Claude IA</button>
-    <button class="btn btn-secondary" onclick="openModal('modal-prompt')" title="Obtenir le prompt à copier dans Claude pour import manuel">📋 Prompt</button>
+    <button class="btn btn-secondary" onclick="openPromptModal()" title="Obtenir le prompt à copier dans Claude pour import manuel">📋 Prompt</button>
     <div class="sep"></div>
     <button class="btn btn-secondary" id="toolbar-proc-json-btn" onclick="exportProcsJSON()" title="Exporte la procédure sélectionnée, le résultat filtré, ou toutes les procédures">⬇ JSON</button>
     <button class="btn btn-secondary" onclick="exportProcsSQL()">⬇ SQL</button>
@@ -1510,34 +1510,22 @@
     <p style="font-size:12px;color:#718096;margin-bottom:14px;line-height:1.6;">
       Copie ce prompt, ouvre <strong>Claude</strong> sur ton mobile, colle le prompt, envoie la photo → Claude génère le JSON → copie le JSON → reviens ici → <strong>⬆ Import</strong> → colle → Importer.
     </p>
+    <!-- Sélecteur de type de prompt -->
+    <div style="display:flex;gap:6px;margin-bottom:10px;">
+      <button id="prompt-mode-sql" data-mode="sql" type="button"
+        onclick="onPromptModeChange('sql','prompt-text')"
+        style="flex:1;padding:8px 10px;border-radius:8px;border:1.5px solid #7c8cf8;background:#7c8cf8;color:#fff;font-weight:700;font-size:12px;cursor:pointer;transition:all .15s;">
+        💾 Requête SQL (MX3)
+      </button>
+      <button id="prompt-mode-text" data-mode="text" type="button"
+        onclick="onPromptModeChange('text','prompt-text')"
+        style="flex:1;padding:8px 10px;border-radius:8px;border:1.5px solid #2d3150;background:#0d0f1a;color:#718096;font-weight:400;font-size:12px;cursor:pointer;transition:all .15s;">
+        📄 Procédure en texte
+      </button>
+    </div>
+
     <div style="position:relative;">
-      <pre id="prompt-text" style="background:#0d0f1c;border:1px solid #2d3150;border-radius:8px;padding:14px;font-size:11px;color:#a0aec0;white-space:pre-wrap;word-break:break-word;max-height:380px;overflow-y:auto;line-height:1.6;font-family:monospace;">Tu es un expert en extraction de code SQL à partir de captures d'écran MX3 (Murex).
-
-Analyse la photo que je t'envoie et génère un fichier JSON importable dans mon application.
-
-RÈGLES ABSOLUES :
-- Recopie le SQL EXACTEMENT comme visible sur la photo, caractère par caractère
-- Ne corrige pas, n'interprète pas, n'ajoute rien
-- Si une partie est coupée par le bord de l'écran, indique [suite coupée à droite] à cet endroit précis
-- Le "name" = valeur du champ Label visible dans la fenêtre MX3
-- Si plusieurs requêtes séparées sont visibles, mets-les toutes dans "body" séparées par une ligne vide
-- Les commentaires SQL (--) doivent être recopiés tels quels
-
-FORMAT JSON À RETOURNER (retourne UNIQUEMENT ce JSON brut, sans texte avant ni après, sans markdown) :
-{
-  "procedures": [
-    {
-      "id": "proc_[label_sans_espaces_ni_accents]",
-      "name": "[valeur exacte du champ Label]",
-      "type": "REQUETE",
-      "description": "[valeur du champ Description si visible, sinon vide]",
-      "body": "[SQL copié fidèlement depuis la photo]",
-      "parameters": [],
-      "tables": [],
-      "flags": []
-    }
-  ]
-}</pre>
+      <pre id="prompt-text" style="background:#0d0f1c;border:1px solid #2d3150;border-radius:8px;padding:14px;font-size:11px;color:#a0aec0;white-space:pre-wrap;word-break:break-word;max-height:380px;overflow-y:auto;line-height:1.6;font-family:monospace;"></pre>
       <button onclick="copyPrompt()" id="copy-prompt-btn" class="btn btn-primary" style="position:absolute;top:10px;right:10px;font-size:11px;padding:5px 10px;">📋 Copier</button>
     </div>
     <div style="margin-top:14px;padding:10px 14px;background:#0d0f1c;border-radius:8px;border-left:3px solid #7c8cf8;font-size:11px;color:#718096;line-height:1.7;">
@@ -1698,6 +1686,23 @@ FORMAT JSON À RETOURNER (retourne UNIQUEMENT ce JSON brut, sans texte avant ni 
       <button class="btn btn-secondary" style="font-size:11px;padding:3px 10px;margin-left:8px;" onclick="closeModal('modal-claude-ai');openSettingsModal();">Configurer maintenant →</button>
     </div>
 
+    <!-- Sélecteur de type de prompt -->
+    <div style="margin-bottom:12px;">
+      <div style="font-size:11px;color:#4a5568;font-weight:600;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Type de contenu</div>
+      <div style="display:flex;gap:6px;">
+        <button id="claude-mode-sql" data-mode="sql" type="button"
+          onclick="onPromptModeChange('sql',null)"
+          style="flex:1;padding:8px 10px;border-radius:8px;border:1.5px solid #7c8cf8;background:#7c8cf8;color:#fff;font-weight:700;font-size:12px;cursor:pointer;transition:all .15s;">
+          💾 Requête SQL (MX3)
+        </button>
+        <button id="claude-mode-text" data-mode="text" type="button"
+          onclick="onPromptModeChange('text',null)"
+          style="flex:1;padding:8px 10px;border-radius:8px;border:1.5px solid #2d3150;background:#0d0f1a;color:#718096;font-weight:400;font-size:12px;cursor:pointer;transition:all .15s;">
+          📄 Procédure en texte
+        </button>
+      </div>
+    </div>
+
     <!-- Photos section -->
     <div class="form-group">
       <label>Photos <span id="claude-photos-count" style="color:#4a5568;font-weight:400;font-size:11px;">(0 photo — ajoutez-en plusieurs si la procédure est sur plusieurs écrans)</span></label>
@@ -1778,7 +1783,7 @@ FORMAT JSON À RETOURNER (retourne UNIQUEMENT ce JSON brut, sans texte avant ni 
 
     <!-- Fallback hint -->
     <div style="margin-top:14px;padding:8px 12px;background:#0d0f1c;border-radius:6px;font-size:11px;color:#4a5568;border-left:2px solid #2d3150;">
-      Pas de clé API ? Utilisez le <strong style="color:#a0aec0;cursor:pointer;" onclick="closeModal('modal-claude-ai');openModal('modal-prompt');">mode manuel (Prompt)</strong> pour envoyer les photos sur claude.ai.
+      Pas de clé API ? Utilisez le <strong style="color:#a0aec0;cursor:pointer;" onclick="closeModal('modal-claude-ai');openPromptModal();">mode manuel (Prompt)</strong> pour envoyer les photos sur claude.ai.
     </div>
   </div>
 </div>
@@ -2878,6 +2883,13 @@ function mobileProcBack() {
 }
 
 // ─── PROMPT CLAUDE ─────────────────────────────────────────────────────────
+function openPromptModal() {
+  openModal('modal-prompt');
+  // Initialise le <pre> avec le mode actif (synchronisé depuis le modal Claude si possible)
+  const mode = _activeModeFor('claude-mode');
+  onPromptModeChange(mode, 'prompt-text');
+}
+
 function copyPrompt() {
   const text = document.getElementById('prompt-text').textContent;
   navigator.clipboard.writeText(text).then(() => {
@@ -3885,6 +3897,98 @@ function removeClaudePhoto(idx) {
   }
 }
 
+// ─── PROMPTS CATALOG ────────────────────────────────────────────────────────
+const _PROMPTS = {
+  sql: `Tu es un expert en extraction de code SQL à partir de captures d'écran MX3 (Murex).
+
+Analyse la photo que je t'envoie et génère un fichier JSON importable dans mon application.
+
+RÈGLES ABSOLUES :
+- Recopie le SQL EXACTEMENT comme visible sur la photo, caractère par caractère
+- Ne corrige pas, n'interprète pas, n'ajoute rien
+- Si une partie est coupée par le bord de l'écran, indique [suite coupée à droite] à cet endroit précis
+- Le "name" = valeur du champ Label visible dans la fenêtre MX3
+- Si plusieurs requêtes séparées sont visibles, mets-les toutes dans "body" séparées par une ligne vide
+- Les commentaires SQL (--) doivent être recopiés tels quels
+
+FORMAT JSON À RETOURNER (retourne UNIQUEMENT ce JSON brut, sans texte avant ni après, sans markdown) :
+{
+  "procedures": [
+    {
+      "id": "proc_[label_sans_espaces_ni_accents]",
+      "name": "[valeur exacte du champ Label]",
+      "type": "REQUETE",
+      "description": "[valeur du champ Description si visible, sinon vide]",
+      "body": "[SQL copié fidèlement depuis la photo]",
+      "parameters": [],
+      "tables": [],
+      "flags": []
+    }
+  ]
+}`,
+
+  text: `Tu es un assistant qui importe des procédures métier dans une application de documentation.
+
+Analyse la photo que je t'envoie et génère un fichier JSON importable.
+
+RÈGLES ABSOLUES :
+- Recopie le contenu textuel EXACTEMENT comme visible sur la photo, sans rien modifier ni reformuler
+- Ne résume pas, n'interprète pas, ne traduis pas
+- Si une partie est coupée par le bord de l'écran, indique [suite coupée] à l'endroit exact
+- Le "name" = titre ou intitulé exact visible sur la photo
+- Le "body" = intégralité du contenu textuel recopié fidèlement, avec la mise en forme originale (numéros d'étapes, tirets, sauts de ligne)
+- Le "type" = déduis parmi : PROCEDURE / REQUETE / CI / EXCEL / DATADICTIONARY / MODULE_REFERENTIEL / MUREX / PRICESELECTION / ID_MDP
+- Si des paramètres d'entrée/sortie sont mentionnés, renseigne "parameters" avec leur nom et type si connu
+- Si des tables, données ou systèmes sources sont cités, liste-les dans "tables"
+- "description" = résumé d'une ligne de ce que fait la procédure, si distinct du corps principal
+
+FORMAT JSON À RETOURNER (retourne UNIQUEMENT ce JSON brut, sans texte avant ni après, sans markdown) :
+{
+  "procedures": [
+    {
+      "id": "proc_[nom_sans_espaces_ni_accents]",
+      "name": "[intitulé exact visible sur la photo]",
+      "type": "PROCEDURE",
+      "description": "[description courte si visible, sinon vide]",
+      "body": "[contenu textuel complet recopié fidèlement]",
+      "parameters": [],
+      "tables": [],
+      "flags": []
+    }
+  ]
+}`
+};
+
+function getPromptText(mode) { return _PROMPTS[mode] || _PROMPTS.sql; }
+
+function onPromptModeChange(mode, updatePreId) {
+  // Met à jour le <pre> du modal Prompt si demandé
+  if (updatePreId) {
+    document.getElementById(updatePreId).textContent = getPromptText(mode);
+  }
+  // Synchronise les deux sélecteurs de mode
+  ['prompt-mode-sql','prompt-mode-text'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) _setModeBtn(el, el.dataset.mode === mode);
+  });
+  ['claude-mode-sql','claude-mode-text'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) _setModeBtn(el, el.dataset.mode === mode);
+  });
+}
+
+function _setModeBtn(btn, active) {
+  btn.style.background    = active ? '#7c8cf8' : '#0d0f1a';
+  btn.style.color         = active ? '#fff'    : '#718096';
+  btn.style.borderColor   = active ? '#7c8cf8' : '#2d3150';
+  btn.style.fontWeight    = active ? '700'     : '400';
+}
+
+function _activeModeFor(prefix) {
+  const sql  = document.getElementById(prefix + '-sql');
+  return (sql && sql.style.background.includes('rgb(124')) ? 'sql' : 'text';
+}
+
 async function analyzeWithClaude() {
   if (!_claudePhotos.length) return;
   const apiKey = getApiKey();
@@ -3898,7 +4002,7 @@ async function analyzeWithClaude() {
   document.getElementById('claude-result-wrap').style.display = 'none';
   document.getElementById('claude-import-btn').style.display = 'none';
 
-  const promptText = document.getElementById('prompt-text').textContent.trim();
+  const promptText = getPromptText(_activeModeFor('claude-mode'));
   const model = getModel();
   const modelLabel = model.includes('haiku') ? 'Haiku ⚡' : model.includes('sonnet') ? 'Sonnet 🧠' : 'Opus 💎';
   status.textContent = `⏳ Analyse de ${n} photo${n > 1 ? 's' : ''} avec ${modelLabel}…`;
