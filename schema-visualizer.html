@@ -800,6 +800,44 @@
   .sql-cmt  { color: #4a5568; font-style: italic; }
   .sql-type { color: #fc8181; }
 
+  /* ── Proc body editor (overlay textarea + highlight div) ── */
+  #proc-body-editor {
+    position: relative; border-radius: 8px; overflow: hidden;
+    border: 1px solid #2d3150; transition: border-color .15s;
+  }
+  #proc-body-editor:focus-within { border-color: #7c8cf8; }
+  #proc-body-highlight {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    padding: 10px 14px; margin: 0;
+    font-family: 'Cascadia Code','Fira Code','Consolas',monospace;
+    font-size: 12px; line-height: 1.7;
+    white-space: pre-wrap; word-wrap: break-word;
+    overflow: hidden; pointer-events: none;
+    color: #e2e8f0; background: #0d0f1a; z-index: 0;
+  }
+  #proc-body {
+    position: relative; z-index: 1; display: block; width: 100%;
+    min-height: 230px; padding: 10px 14px; margin: 0;
+    font-family: 'Cascadia Code','Fira Code','Consolas',monospace;
+    font-size: 12px; line-height: 1.7;
+    background: transparent !important; color: transparent;
+    caret-color: #e2e8f0; border: none; outline: none;
+    resize: vertical; box-sizing: border-box;
+    white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word;
+  }
+  /* Find/Replace bar */
+  #find-replace-bar {
+    background: #0d0f1a; border: 1px solid #2d3150;
+    border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+  }
+  #fr-find, #fr-replace {
+    flex: 1; background: #1a1d2e; border: 1px solid #2d3150;
+    border-radius: 6px; color: #e2e8f0; padding: 6px 10px;
+    font-size: 12px; outline: none; transition: border-color .15s;
+  }
+  #fr-find:focus, #fr-replace:focus { border-color: #7c8cf8; }
+  #fr-count { font-size: 11px; color: #4a5568; min-width: 100px; text-align: right; white-space: nowrap; }
+
   /* proc modal larger */
   .modal-lg { max-width: 680px; min-width: 560px; }
   .modal-lg textarea {
@@ -1562,8 +1600,30 @@ FORMAT JSON À RETOURNER (retourne UNIQUEMENT ce JSON brut, sans texte avant ni 
       <input type="text" id="proc-tables" placeholder="ex: users, orders, products" />
     </div>
     <div class="form-group">
-      <label>Corps Procédure</label>
-      <textarea id="proc-body" rows="12" placeholder="Décrivez ou saisissez le contenu de la procédure..."></textarea>
+      <label style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        Corps Procédure
+        <button type="button" onclick="toggleFindReplace()" class="btn btn-secondary" style="font-size:11px;padding:3px 10px;" title="Rechercher et remplacer du texte (Ctrl+H)">🔍 Rechercher / Remplacer</button>
+      </label>
+
+      <!-- Barre Find/Replace -->
+      <div id="find-replace-bar" style="display:none;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <input id="fr-find" type="text" placeholder="Rechercher…" oninput="frUpdate()" onkeydown="frKey(event)" autocomplete="off" spellcheck="false">
+          <span id="fr-count"></span>
+          <button type="button" class="btn btn-secondary" style="font-size:11px;padding:4px 9px;" onclick="frFindNext()" title="Occurrence suivante (Entrée)">↓</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <input id="fr-replace" type="text" placeholder="Remplacer par…" onkeydown="frReplaceKey(event)" autocomplete="off" spellcheck="false">
+          <button type="button" class="btn btn-secondary" style="font-size:11px;padding:4px 10px;white-space:nowrap;" onclick="frReplaceNext()">Remplacer</button>
+          <button type="button" class="btn btn-primary"    style="font-size:11px;padding:4px 10px;white-space:nowrap;" onclick="frReplaceAll()">Tout remplacer</button>
+        </div>
+      </div>
+
+      <!-- Éditeur avec coloration syntaxique -->
+      <div id="proc-body-editor">
+        <div id="proc-body-highlight" aria-hidden="true"></div>
+        <textarea id="proc-body" rows="14" placeholder="Décrivez ou saisissez le contenu de la procédure..." spellcheck="false" autocorrect="off" autocapitalize="off"></textarea>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('modal-proc')">Annuler</button>
@@ -3145,6 +3205,135 @@ function flagInputKey(e) {
   if (e.key === 'Enter') { e.preventDefault(); addFlagChip(); }
 }
 
+// ─── PROC BODY EDITOR (overlay textarea + highlight) ───────────────────────
+let _frMatches = [];   // positions des occurrences dans le texte brut
+let _frInitDone = false;
+
+function initProcBodyEditor() {
+  if (_frInitDone) return; // n'attacher les listeners qu'une seule fois
+  _frInitDone = true;
+  const ta = document.getElementById('proc-body');
+  const hl = document.getElementById('proc-body-highlight');
+  ta.addEventListener('input', updateProcBodyHighlight);
+  ta.addEventListener('scroll', () => { hl.scrollTop = ta.scrollTop; hl.scrollLeft = ta.scrollLeft; });
+  // Ctrl+H → ouvrir find/replace
+  ta.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'h') { e.preventDefault(); toggleFindReplace(); }
+  });
+}
+
+function updateProcBodyHighlight() {
+  const ta = document.getElementById('proc-body');
+  const hl = document.getElementById('proc-body-highlight');
+  if (!ta || !hl) return;
+  let html = highlightSQL(ta.value);
+  const term = (document.getElementById('fr-find') || {}).value || '';
+  if (term.trim()) html = _addFRMarks(html, term);
+  hl.innerHTML = html + '\n'; // \n évite le clipping de la dernière ligne
+  hl.scrollTop  = ta.scrollTop;
+  hl.scrollLeft = ta.scrollLeft;
+}
+
+function _addFRMarks(html, term) {
+  const esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Ne marque que hors des balises HTML
+  return html.replace(
+    new RegExp(`(?![^<]*>)(${esc})`, 'gi'),
+    '<mark style="background:#f6e05e44;color:#f6e05e;border-radius:2px;outline:1px solid #f6e05e66;">$1</mark>'
+  );
+}
+
+// ── Find / Replace ──────────────────────────────────────────────────────────
+function toggleFindReplace() {
+  const bar = document.getElementById('find-replace-bar');
+  const isVisible = bar.style.display !== 'none';
+  bar.style.display = isVisible ? 'none' : 'block';
+  if (!isVisible) {
+    // Pré-remplir avec la sélection courante si c'est un mot (pas multiligne)
+    const ta  = document.getElementById('proc-body');
+    const sel = ta.value.substring(ta.selectionStart, ta.selectionEnd).trim();
+    if (sel && !sel.includes('\n')) {
+      document.getElementById('fr-find').value = sel;
+      frUpdate();
+    }
+    setTimeout(() => { document.getElementById('fr-find').focus(); document.getElementById('fr-find').select(); }, 50);
+  } else {
+    _frMatches = [];
+    updateProcBodyHighlight(); // retire les marquages
+  }
+}
+
+function frUpdate() {
+  const ta    = document.getElementById('proc-body');
+  const term  = document.getElementById('fr-find').value;
+  const count = document.getElementById('fr-count');
+  if (!term.trim()) {
+    count.textContent = ''; _frMatches = [];
+    updateProcBodyHighlight(); return;
+  }
+  const re = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+  _frMatches = [];
+  let m;
+  while ((m = re.exec(ta.value)) !== null) _frMatches.push(m.index);
+  count.textContent  = _frMatches.length
+    ? `${_frMatches.length} occurrence${_frMatches.length > 1 ? 's' : ''}`
+    : '⚠ Aucune';
+  count.style.color  = _frMatches.length ? '#68d391' : '#fc8181';
+  updateProcBodyHighlight();
+}
+
+function frFindNext() {
+  const ta   = document.getElementById('proc-body');
+  const term = document.getElementById('fr-find').value;
+  if (!term.trim() || !_frMatches.length) return;
+  const cursor = ta.selectionEnd;
+  let idx = _frMatches.findIndex(p => p >= cursor);
+  if (idx === -1) idx = 0; // wrap around
+  const pos = _frMatches[idx];
+  ta.focus();
+  ta.setSelectionRange(pos, pos + term.length);
+  // Scroll pour que la sélection soit visible
+  const lineH = 12 * 1.7; // font-size * line-height
+  const line  = ta.value.substr(0, pos).split('\n').length;
+  ta.scrollTop = Math.max(0, (line - 4) * lineH);
+}
+
+function frReplaceNext() {
+  const ta   = document.getElementById('proc-body');
+  const term = document.getElementById('fr-find').value;
+  const rep  = document.getElementById('fr-replace').value;
+  if (!term.trim() || !_frMatches.length) return;
+  const cursor = ta.selectionStart;
+  let idx = _frMatches.findIndex(p => p >= cursor);
+  if (idx === -1) idx = 0;
+  const pos = _frMatches[idx];
+  ta.value = ta.value.slice(0, pos) + rep + ta.value.slice(pos + term.length);
+  ta.focus();
+  ta.setSelectionRange(pos, pos + rep.length);
+  frUpdate();
+}
+
+function frReplaceAll() {
+  const ta   = document.getElementById('proc-body');
+  const term = document.getElementById('fr-find').value;
+  const rep  = document.getElementById('fr-replace').value;
+  if (!term.trim()) return;
+  const re   = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+  const n    = (ta.value.match(re) || []).length;
+  ta.value   = ta.value.replace(re, rep);
+  frUpdate();
+  if (n > 0) showToast(`✔ ${n} remplacement${n > 1 ? 's' : ''} effectué${n > 1 ? 's' : ''}`);
+}
+
+function frKey(e) {
+  if (e.key === 'Enter')  { e.preventDefault(); frFindNext(); }
+  if (e.key === 'Escape') { e.preventDefault(); toggleFindReplace(); }
+}
+function frReplaceKey(e) {
+  if (e.key === 'Enter')  { e.preventDefault(); frReplaceNext(); }
+  if (e.key === 'Escape') { e.preventDefault(); toggleFindReplace(); }
+}
+
 // ─── ADD / EDIT PROCEDURE MODAL ────────────────────────────────────────────
 function openAddProcModal() {
   document.getElementById('modal-proc-title').textContent = 'Nouvelle procédure';
@@ -3155,9 +3344,11 @@ function openAddProcModal() {
   document.getElementById('proc-tables').value = '';
   document.getElementById('proc-body').value = '';
   document.getElementById('params-list').innerHTML = '';
+  document.getElementById('find-replace-bar').style.display = 'none';
   renderFlagChips([]);
   openModal('modal-proc');
-  setTimeout(() => document.getElementById('proc-name').focus(), 100);
+  initProcBodyEditor();
+  setTimeout(() => { updateProcBodyHighlight(); document.getElementById('proc-name').focus(); }, 50);
 }
 
 function openEditProcModal(id) {
@@ -3170,11 +3361,14 @@ function openEditProcModal(id) {
   document.getElementById('proc-desc').value = proc.description || '';
   document.getElementById('proc-tables').value = (proc.tables||[]).join(', ');
   document.getElementById('proc-body').value = proc.body || '';
+  document.getElementById('find-replace-bar').style.display = 'none';
   const pl = document.getElementById('params-list');
   pl.innerHTML = '';
   (proc.parameters||[]).forEach(p => addParamRow(p.name, p.type, p.mode));
   renderFlagChips(proc.flags || []);
   openModal('modal-proc');
+  initProcBodyEditor();
+  setTimeout(updateProcBodyHighlight, 50);
 }
 
 function addParamRow(name='', type='INT', mode='IN') {
