@@ -4097,11 +4097,34 @@ function _setModeBtn(btn, active) {
 let _recognition   = null;
 let _isRecording   = false;
 let _voiceLang     = 'fr-FR';
-let _voiceFinal    = '';   // texte finalisé accumulé
+let _voiceFinal    = '';   // texte finalisé accumulé (sans les intérims)
+let _voiceInterim  = '';   // dernier fragment intérimaire (non finalisé)
+let _voiceRestart  = false; // vrai quand onend est un redémarrage automatique
+
+// ── Déduplication : évite les répétitions quand Chrome réenvoie un fragment ──
+// Cherche jusqu'à N mots de chevauchement entre la fin de `existing` et le
+// début de `newText`, et supprime le doublon avant de concaténer.
+function _voiceAppend(existing, newText) {
+  newText = newText.trim();
+  if (!newText) return existing;
+  const sep = existing && !existing.endsWith(' ') ? ' ' : '';
+  const exWords  = existing.trim().split(/\s+/).filter(Boolean);
+  const newWords = newText.split(/\s+/).filter(Boolean);
+  const maxOvlp  = Math.min(exWords.length, newWords.length, 8);
+  for (let n = maxOvlp; n >= 2; n--) {
+    const tail  = exWords.slice(-n).join(' ').toLowerCase();
+    const head  = newWords.slice(0, n).join(' ').toLowerCase();
+    if (tail === head) {
+      const rest = newWords.slice(n).join(' ');
+      return existing + (rest ? (existing.endsWith(' ') ? '' : ' ') + rest : '');
+    }
+  }
+  return existing + sep + newText;
+}
 
 function setVoiceLang(lang) {
   _voiceLang = lang;
-  if (_isRecording) { stopRecording(); startRecording(); }
+  if (_isRecording) { stopRecording(); setTimeout(startRecording, 200); }
   document.getElementById('voice-lang-fr').classList.toggle('active', lang === 'fr-FR');
   document.getElementById('voice-lang-en').classList.toggle('active', lang === 'en-US');
 }
@@ -4110,72 +4133,168 @@ function toggleRecording() {
   _isRecording ? stopRecording() : startRecording();
 }
 
-function startRecording() {
+function _createRecognition() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) {
+  if (!SR) return null;
+  const r = new SR();
+  r.lang            = _voiceLang;
+  r.continuous      = true;   // session longue
+  r.interimResults  = true;   // affichage en temps réel
+  r.maxAlternatives = 1;
+  return r;
+}
+
+function startRecording() {
+  const r = _createRecognition();
+  if (!r) {
     document.getElementById('voice-rec-status').textContent =
-      '⚠ Reconnaissance vocale non supportée (Chrome/Edge requis)';
+      '⚠ Reconnaissance vocale non supportée — utilisez Chrome ou Edge';
     return;
   }
-  _recognition = new SR();
-  _recognition.lang            = _voiceLang;
-  _recognition.continuous      = true;
-  _recognition.interimResults  = true;
-  _recognition.maxAlternatives = 1;
+  _recognition = r;
 
-  _recognition.onstart = () => {
+  r.onstart = () => {
     _isRecording = true;
     document.getElementById('voice-mic-btn').classList.add('recording');
     document.getElementById('voice-mic-btn').textContent = '⏹';
-    document.getElementById('voice-rec-status').innerHTML =
-      '<span style="color:#fc8181;">● Enregistrement en cours…</span>';
+    if (!_voiceRestart) {
+      document.getElementById('voice-rec-status').innerHTML =
+        '<span style="color:#fc8181;">● Enregistrement en cours…</span>';
+    }
+    _voiceRestart = false;
   };
 
-  _recognition.onresult = e => {
-    let interim = '';
-    let finalPart = '';
+  r.onresult = e => {
+    let newFinal = '';
+    _voiceInterim = '';
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) finalPart += t + ' ';
-      else interim += t;
+      if (e.results[i].isFinal) newFinal += (newFinal ? ' ' : '') + t.trim();
+      else _voiceInterim += t;
     }
-    if (finalPart) _voiceFinal += finalPart;
+    // Déduplication : le fragment final peut chevaucher _voiceFinal si Chrome
+    // a réenvoyé quelque chose après un redémarrage automatique.
+    if (newFinal) _voiceFinal = _voiceAppend(_voiceFinal, newFinal);
     const ta = document.getElementById('voice-transcript');
-    ta.value = _voiceFinal + interim;
+    ta.value = _voiceFinal + (_voiceInterim ? (_voiceFinal ? ' ' : '') + _voiceInterim : '');
     ta.scrollTop = ta.scrollHeight;
     onVoiceTranscriptInput();
   };
 
-  _recognition.onerror = e => {
-    const msgs = { 'no-speech': 'Aucune parole détectée', 'not-allowed': 'Microphone refusé', 'network': 'Erreur réseau' };
+  r.onerror = e => {
+    if (e.error === 'no-speech') return; // silence normal, pas une erreur
+    const msgs = { 'not-allowed': 'Microphone refusé dans le navigateur', 'network': 'Erreur réseau', 'aborted': '' };
+    const msg = msgs[e.error] !== undefined ? msgs[e.error] : e.error;
+    if (msg) document.getElementById('voice-rec-status').textContent = '⚠ ' + msg;
+    if (e.error !== 'aborted') stopRecording();
+  };
+
+  r.onend = () => {
+    if (!_isRecording) return; // arrêt volontaire → ne pas redémarrer
+    // Chrome coupe la session après silence même avec continuous=true.
+    // Avant de redémarrer : commit des intérims pour éviter les doublons.
+    if (_voiceInterim.trim()) {
+      _voiceFinal = _voiceAppend(_voiceFinal, _voiceInterim.trim());
+      _voiceInterim = '';
+      const ta = document.getElementById('voice-transcript');
+      if (ta) { ta.value = _voiceFinal; onVoiceTranscriptInput(); }
+    }
+    document.getElementById('voice-rec-status').innerHTML =
+      '<span style="color:#f6ad55;">⏸ Pause — reprise automatique…</span>';
+    _voiceRestart = true;
+    // Délai : évite le chevauchement de sessions Chrome
+    setTimeout(() => {
+      if (_isRecording) {
+        _recognition = _createRecognition();
+        // Réattache tous les handlers sur le nouvel objet
+        startRecordingSession(_recognition);
+      }
+    }, 350);
+  };
+
+  _voiceFinal = (document.getElementById('voice-transcript').value || '').trimEnd();
+  if (_voiceFinal) _voiceFinal += ' ';
+  try { r.start(); } catch(err) {
+    document.getElementById('voice-rec-status').textContent = '⚠ ' + err.message;
+  }
+}
+
+// Attache les handlers à un objet recognition existant (utilisé lors du redémarrage)
+function startRecordingSession(r) {
+  if (!r) return;
+  r.lang           = _voiceLang;
+  r.continuous     = true;
+  r.interimResults = true;
+  r.maxAlternatives = 1;
+
+  r.onstart = () => {
+    document.getElementById('voice-rec-status').innerHTML =
+      '<span style="color:#fc8181;">● Enregistrement en cours…</span>';
+    _voiceRestart = false;
+  };
+  r.onresult  = _recognition.onresult  = (() => {
+    // Même handler que ci-dessus — on réutilise via closure
+    const handler = e => {
+      let newFinal = ''; _voiceInterim = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) newFinal += (newFinal ? ' ' : '') + t.trim();
+        else _voiceInterim += t;
+      }
+      if (newFinal) _voiceFinal = _voiceAppend(_voiceFinal, newFinal);
+      const ta = document.getElementById('voice-transcript');
+      ta.value = _voiceFinal + (_voiceInterim ? (_voiceFinal ? ' ' : '') + _voiceInterim : '');
+      ta.scrollTop = ta.scrollHeight;
+      onVoiceTranscriptInput();
+    };
+    r.onresult = handler;
+    return handler;
+  })();
+  r.onerror  = e => {
+    if (e.error === 'no-speech' || e.error === 'aborted') return;
+    const msgs = { 'not-allowed': 'Microphone refusé', 'network': 'Erreur réseau' };
     document.getElementById('voice-rec-status').textContent = '⚠ ' + (msgs[e.error] || e.error);
     stopRecording();
   };
+  r.onend = _recognition.onend = (() => {
+    const handler = () => {
+      if (!_isRecording) return;
+      if (_voiceInterim.trim()) {
+        _voiceFinal = _voiceAppend(_voiceFinal, _voiceInterim.trim());
+        _voiceInterim = '';
+        const ta = document.getElementById('voice-transcript');
+        if (ta) { ta.value = _voiceFinal; onVoiceTranscriptInput(); }
+      }
+      document.getElementById('voice-rec-status').innerHTML =
+        '<span style="color:#f6ad55;">⏸ Pause — reprise automatique…</span>';
+      setTimeout(() => {
+        if (_isRecording) {
+          _recognition = _createRecognition();
+          startRecordingSession(_recognition);
+        }
+      }, 350);
+    };
+    r.onend = handler;
+    return handler;
+  })();
 
-  _recognition.onend = () => {
-    // Redémarre automatiquement si l'utilisateur n'a pas cliqué Stop
-    if (_isRecording) {
-      try { _recognition.start(); } catch(_) {}
-    }
-  };
-
-  _voiceFinal = document.getElementById('voice-transcript').value; // conserve le texte existant
-  try { _recognition.start(); } catch(err) {
+  try { r.start(); } catch(err) {
     document.getElementById('voice-rec-status').textContent = '⚠ ' + err.message;
   }
 }
 
 function stopRecording() {
   _isRecording = false;
+  _voiceInterim = '';
   if (_recognition) { try { _recognition.stop(); } catch(_) {} _recognition = null; }
   const btn = document.getElementById('voice-mic-btn');
   if (btn) { btn.classList.remove('recording'); btn.textContent = '🎤'; }
   const st = document.getElementById('voice-rec-status');
-  if (st) st.innerHTML = '<span style="color:#68d391;">✔ Enregistrement arrêté</span>';
+  if (st) st.innerHTML = '<span style="color:#68d391;">✔ Enregistrement arrêté — vous pouvez corriger avant d\'envoyer</span>';
 }
 
 function clearVoiceTranscript() {
-  _voiceFinal = '';
+  _voiceFinal = ''; _voiceInterim = '';
   document.getElementById('voice-transcript').value = '';
   document.getElementById('voice-rec-status').textContent = '';
   onVoiceTranscriptInput();
