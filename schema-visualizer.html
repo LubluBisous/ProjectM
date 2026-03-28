@@ -3984,6 +3984,63 @@ function _setModeBtn(btn, active) {
   btn.style.fontWeight  = active ? '700'     : '400';
 }
 
+// ── Helpers pour analyzeWithClaude ──────────────────────────────────────────
+
+// Classifie une erreur et retourne { retryable, userMsg }
+function _claudeErrorInfo(err, httpStatus) {
+  const msg = (err?.message || '').toLowerCase();
+  if (httpStatus === 529 || msg.includes('overload')) return {
+    retryable: true,
+    userMsg: '⏳ Serveurs Claude surchargés (529) — nouvelle tentative dans {s}s…',
+    finalMsg: '❌ Serveurs Claude toujours surchargés. Réessayez dans quelques minutes, ou passez sur Haiku (plus dispo en surcharge).'
+  };
+  if (httpStatus === 529 || msg.includes('529')) return {
+    retryable: true,
+    userMsg: '⏳ Surcharge (529) — nouvelle tentative dans {s}s…',
+    finalMsg: '❌ Surcharge persistante. Réessayez plus tard.'
+  };
+  if (httpStatus === 503 || msg.includes('503')) return {
+    retryable: true,
+    userMsg: '⏳ Service temporairement indisponible — nouvelle tentative dans {s}s…',
+    finalMsg: '❌ Service indisponible. Vérifiez status.anthropic.com.'
+  };
+  if (msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('load failed')) return {
+    retryable: true,
+    userMsg: '⏳ Erreur réseau — nouvelle tentative dans {s}s…',
+    finalMsg: '❌ Échec réseau. Vérifiez votre connexion, désactivez VPN/bloqueurs de pub, et réessayez.'
+  };
+  if (httpStatus === 401 || msg.includes('401') || msg.includes('unauthorized')) return {
+    retryable: false,
+    finalMsg: '❌ Clé API invalide ou expirée — vérifiez vos paramètres (⚙ Clé API).'
+  };
+  if (httpStatus === 429 || msg.includes('rate limit') || msg.includes('429')) return {
+    retryable: false,
+    finalMsg: '❌ Limite de débit atteinte. Attendez quelques secondes puis réessayez.'
+  };
+  if (httpStatus === 400 || msg.includes('400')) return {
+    retryable: false,
+    finalMsg: `❌ Requête invalide (400). L'image est peut-être trop volumineuse — essayez le mode compression activé.`
+  };
+  return {
+    retryable: false,
+    finalMsg: '❌ Erreur : ' + (err?.message || 'inconnue')
+  };
+}
+
+// fetch avec timeout configurable (ms)
+async function _fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch(e) {
+    if (e.name === 'AbortError') throw new Error(`Timeout — pas de réponse après ${timeoutMs/1000}s. Réessayez ou réduisez le nombre/la taille des photos.`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function analyzeWithClaude() {
   if (!_claudePhotos.length) return;
   const apiKey = getApiKey();
@@ -4010,47 +4067,75 @@ async function analyzeWithClaude() {
     : promptText;
   const messageContent = [...imageBlocks, { type: 'text', text: textInstruction }];
 
-  try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 4096,
-        messages: [{
-          role: 'user',
-          content: messageContent
-        }]
-      })
-    });
+  const MAX_RETRIES = 2;           // 2 retentatives max (3 essais au total)
+  const RETRY_DELAYS = [8, 20];    // délais en secondes entre chaque essai
+  const TIMEOUT_MS   = 90_000;     // 90s max par tentative
 
-    if (!resp.ok) {
-      let errMsg = `Erreur HTTP ${resp.status}`;
-      try { const e = await resp.json(); errMsg = e.error?.message || errMsg; } catch(_) {}
-      throw new Error(errMsg);
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const resp = await _fetchWithTimeout('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({ model, max_tokens: 4096, messages: [{ role: 'user', content: messageContent }] })
+      }, TIMEOUT_MS);
+
+      if (!resp.ok) {
+        let apiMsg = '';
+        try { const e = await resp.json(); apiMsg = e.error?.message || ''; } catch(_) {}
+        const err = new Error(apiMsg || `HTTP ${resp.status}`);
+        const info = _claudeErrorInfo(err, resp.status);
+        if (info.retryable && attempt < MAX_RETRIES) {
+          const delaySec = RETRY_DELAYS[attempt];
+          // Compte à rebours
+          for (let s = delaySec; s > 0; s--) {
+            status.textContent = info.userMsg.replace('{s}', s) + ` (essai ${attempt+1}/${MAX_RETRIES})`;
+            await new Promise(r => setTimeout(r, 1000));
+          }
+          status.textContent = `⏳ Tentative ${attempt+2}/${MAX_RETRIES+1} avec ${modelLabel}…`;
+          continue; // réessai
+        }
+        status.textContent = info.finalMsg;
+        analyzeBtn.textContent = '🔍 Analyser avec Claude';
+        analyzeBtn.disabled = false;
+        return;
+      }
+
+      // Succès
+      const data = await resp.json();
+      let text = (data.content?.[0]?.text || '').trim();
+      const fence = text.match(/```(?:json)?\s*([\s\S]+?)\s*```/);
+      if (fence) text = fence[1].trim();
+
+      document.getElementById('claude-result-text').value = text;
+      document.getElementById('claude-result-wrap').style.display = 'block';
+      document.getElementById('claude-import-btn').style.display = 'inline-flex';
+      const suffix = attempt > 0 ? ` (réussi à l'essai ${attempt+1})` : '';
+      status.textContent = '✅ Analyse terminée' + suffix + ' — vérifiez le JSON puis cliquez sur Importer';
+      analyzeBtn.textContent = '🔄 Relancer';
+      analyzeBtn.disabled = false;
+      return;
+
+    } catch(err) {
+      const info = _claudeErrorInfo(err, null);
+      if (info.retryable && attempt < MAX_RETRIES) {
+        const delaySec = RETRY_DELAYS[attempt];
+        for (let s = delaySec; s > 0; s--) {
+          status.textContent = info.userMsg.replace('{s}', s) + ` (essai ${attempt+1}/${MAX_RETRIES})`;
+          await new Promise(r => setTimeout(r, 1000));
+        }
+        status.textContent = `⏳ Tentative ${attempt+2}/${MAX_RETRIES+1} avec ${modelLabel}…`;
+        continue;
+      }
+      status.textContent = info.finalMsg;
+      analyzeBtn.textContent = '🔍 Analyser avec Claude';
+      analyzeBtn.disabled = false;
+      return;
     }
-
-    const data = await resp.json();
-    let text = (data.content?.[0]?.text || '').trim();
-    const fence = text.match(/```(?:json)?\s*([\s\S]+?)\s*```/);
-    if (fence) text = fence[1].trim();
-
-    document.getElementById('claude-result-text').value = text;
-    document.getElementById('claude-result-wrap').style.display = 'block';
-    document.getElementById('claude-import-btn').style.display = 'inline-flex';
-    status.textContent = '✅ Analyse terminée — vérifiez le JSON puis cliquez sur Importer';
-    analyzeBtn.textContent = '🔄 Relancer';
-    analyzeBtn.disabled = false;
-
-  } catch(err) {
-    status.textContent = '❌ Erreur : ' + err.message;
-    analyzeBtn.textContent = '🔍 Analyser avec Claude';
-    analyzeBtn.disabled = false;
   }
 }
 
