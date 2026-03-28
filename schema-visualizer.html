@@ -838,37 +838,6 @@
   #fr-find:focus, #fr-replace:focus { border-color: #7c8cf8; }
   #fr-count { font-size: 11px; color: #4a5568; min-width: 100px; text-align: right; white-space: nowrap; }
 
-  /* ── Dictée vocale ── */
-  @keyframes pulse-mic {
-    0%,100% { box-shadow: 0 0 0 0 rgba(229,62,62,.55); }
-    50%      { box-shadow: 0 0 0 14px rgba(229,62,62,0); }
-  }
-  #voice-mic-btn {
-    width: 72px; height: 72px; border-radius: 50%;
-    border: 2.5px solid #2d3150; background: #0d0f1a;
-    font-size: 28px; cursor: pointer; transition: background .2s, border-color .2s;
-    display: flex; align-items: center; justify-content: center;
-  }
-  #voice-mic-btn.recording {
-    background: #9b2c2c; border-color: #e53e3e;
-    animation: pulse-mic 1.1s ease infinite;
-  }
-  #voice-transcript {
-    background: #0d0f1a; border: 1px solid #2d3150; border-radius: 8px;
-    color: #e2e8f0; padding: 10px 12px; font-size: 13px; line-height: 1.7;
-    resize: vertical; min-height: 130px; width: 100%; box-sizing: border-box;
-    outline: none; transition: border-color .15s; font-family: inherit;
-  }
-  #voice-transcript:focus { border-color: #7c8cf8; }
-  .voice-lang-btn {
-    padding: 5px 12px; border-radius: 20px; border: 1.5px solid #2d3150;
-    background: #0d0f1a; color: #718096; font-size: 12px; cursor: pointer;
-    transition: all .15s;
-  }
-  .voice-lang-btn.active {
-    background: #252840; border-color: #7c8cf8; color: #e2e8f0; font-weight: 600;
-  }
-
   /* proc modal larger */
   .modal-lg { max-width: 680px; min-width: 560px; }
   .modal-lg textarea {
@@ -1729,39 +1698,13 @@
         <button id="claude-mode-text" data-mode="text" type="button"
           onclick="onPromptModeChange('text',null)"
           style="flex:1;padding:8px 10px;border-radius:8px;border:1.5px solid #2d3150;background:#0d0f1a;color:#718096;font-weight:400;font-size:12px;cursor:pointer;transition:all .15s;">
-          📄 Texte
+          📄 Procédure en texte
         </button>
-        <button id="claude-mode-voice" data-mode="voice" type="button"
-          onclick="onPromptModeChange('voice',null)"
-          style="flex:1;padding:8px 10px;border-radius:8px;border:1.5px solid #2d3150;background:#0d0f1a;color:#718096;font-weight:400;font-size:12px;cursor:pointer;transition:all .15s;">
-          🎤 Dictée
-        </button>
-      </div>
-    </div>
-
-    <!-- Section dictée vocale (cachée par défaut) -->
-    <div id="claude-voice-section" style="display:none;">
-      <!-- Langue + bouton micro -->
-      <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:14px 0 6px;">
-        <div style="display:flex;gap:8px;">
-          <button id="voice-lang-fr" class="voice-lang-btn active" onclick="setVoiceLang('fr-FR')">🇫🇷 Français</button>
-          <button id="voice-lang-en" class="voice-lang-btn"        onclick="setVoiceLang('en-US')">🇬🇧 English</button>
-        </div>
-        <button id="voice-mic-btn" onclick="toggleRecording()" title="Démarrer / Arrêter la dictée">🎤</button>
-        <div id="voice-rec-status" style="font-size:12px;color:#4a5568;min-height:18px;"></div>
-      </div>
-      <!-- Transcription -->
-      <div class="form-group" style="margin-top:4px;">
-        <label style="display:flex;align-items:center;justify-content:space-between;">
-          Transcription
-          <button type="button" onclick="clearVoiceTranscript()" style="font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid #2d3150;background:transparent;color:#4a5568;cursor:pointer;">✕ Effacer</button>
-        </label>
-        <textarea id="voice-transcript" placeholder="Appuyez sur le micro et dictez votre procédure… La transcription apparaît ici en temps réel. Vous pouvez la corriger avant d'envoyer à Claude." oninput="onVoiceTranscriptInput()"></textarea>
       </div>
     </div>
 
     <!-- Photos section -->
-    <div id="claude-photos-section" class="form-group">
+    <div class="form-group">
       <label>Photos <span id="claude-photos-count" style="color:#4a5568;font-weight:400;font-size:11px;">(0 photo — ajoutez-en plusieurs si la procédure est sur plusieurs écrans)</span></label>
       <div id="claude-photos-grid">
         <!-- thumbnails rendered by JS -->
@@ -1796,8 +1739,8 @@
       </div>
     </div>
 
-    <!-- Quality toggle (caché en mode voix) -->
-    <div id="claude-hq-section" style="display:flex;align-items:center;gap:9px;margin-top:2px;margin-bottom:2px;">
+    <!-- Quality toggle -->
+    <div style="display:flex;align-items:center;gap:9px;margin-top:2px;margin-bottom:2px;">
       <label style="display:flex;align-items:center;gap:7px;cursor:pointer;user-select:none;font-size:12px;color:#718096;" title="Désactivez la compression si le texte SQL est mal reconnu (envoie l'image originale, coûte plus de tokens)">
         <span style="position:relative;display:inline-block;width:34px;height:18px;flex-shrink:0;">
           <input type="checkbox" id="claude-hq-toggle" style="opacity:0;width:0;height:0;position:absolute;" onchange="onHQToggleChange(this)">
@@ -4015,37 +3958,6 @@ FORMAT JSON À RETOURNER (retourne UNIQUEMENT ce JSON brut, sans texte avant ni 
   ]
 }`,
 
-  voice: `Tu es un assistant expert en documentation de procédures métier.
-
-Le texte ci-dessous est une transcription brute d'une dictée vocale décrivant une procédure. Reformule-le de manière claire, structurée et professionnelle.
-
-RÈGLES ABSOLUES :
-- Garde TOUTES les informations mentionnées, sans en inventer ni en supprimer
-- Reformule le "body" en texte clair et structuré (étapes numérotées si la procédure est séquentielle)
-- Déduis le "name" depuis le titre ou le sujet principal mentionné
-- Le "type" = déduis parmi : PROCEDURE / REQUETE / CI / EXCEL / DATADICTIONARY / MODULE_REFERENTIEL / MUREX / PRICESELECTION / ID_MDP
-- Si des paramètres d'entrée/sortie sont mentionnés, renseigne "parameters" avec leur nom et type
-- Si des tables, données ou systèmes sources sont cités, liste-les dans "tables"
-- "description" = résumé d'une phrase professionnelle de ce que fait la procédure
-
-TRANSCRIPTION VOCALE À FORMALISER :
-[TRANSCRIPTION]
-
-FORMAT JSON À RETOURNER (retourne UNIQUEMENT ce JSON brut, sans texte avant ni après, sans markdown) :
-{
-  "procedures": [
-    {
-      "id": "proc_[nom_sans_espaces_ni_accents]",
-      "name": "[intitulé clair et professionnel de la procédure]",
-      "type": "PROCEDURE",
-      "description": "[description professionnelle d'une phrase]",
-      "body": "[contenu reformulé et structuré fidèlement à la dictée]",
-      "parameters": [],
-      "tables": [],
-      "flags": []
-    }
-  ]
-}`
 };
 
 function getPromptText(mode) { return _PROMPTS[mode] || _PROMPTS.sql; }
@@ -4054,36 +3966,15 @@ let _activePromptMode = 'sql';
 
 function onPromptModeChange(mode, updatePreId) {
   _activePromptMode = mode;
-  // Met à jour le <pre> du modal Prompt si demandé
   if (updatePreId) {
     document.getElementById(updatePreId).textContent = getPromptText(mode);
   }
-  // Synchronise tous les boutons de mode
-  ['prompt-mode-sql','prompt-mode-text',
-   'claude-mode-sql','claude-mode-text','claude-mode-voice'].forEach(id => {
+  ['prompt-mode-sql','prompt-mode-text','claude-mode-sql','claude-mode-text'].forEach(id => {
     const el = document.getElementById(id);
     if (el) _setModeBtn(el, el.dataset.mode === mode);
   });
-  // Affiche/cache les sections photos vs voix
-  const isVoice = mode === 'voice';
-  const photosSection = document.getElementById('claude-photos-section');
-  const hqSection     = document.getElementById('claude-hq-section');
-  const voiceSection  = document.getElementById('claude-voice-section');
-  if (photosSection) photosSection.style.display = isVoice ? 'none' : '';
-  if (hqSection)     hqSection.style.display     = isVoice ? 'none' : '';
-  if (voiceSection)  voiceSection.style.display  = isVoice ? 'block' : 'none';
-  // Active le bouton Analyser selon le mode
   const analyzeBtn = document.getElementById('claude-analyze-btn');
-  if (analyzeBtn) {
-    if (isVoice) {
-      const t = document.getElementById('voice-transcript');
-      analyzeBtn.disabled = !t || !t.value.trim();
-    } else {
-      analyzeBtn.disabled = _claudePhotos.length === 0;
-    }
-  }
-  // Si on quitte la voix, arrêter l'enregistrement
-  if (!isVoice && _isRecording) stopRecording();
+  if (analyzeBtn) analyzeBtn.disabled = _claudePhotos.length === 0;
 }
 
 function _setModeBtn(btn, active) {
@@ -4093,226 +3984,10 @@ function _setModeBtn(btn, active) {
   btn.style.fontWeight  = active ? '700'     : '400';
 }
 
-// ─── RECONNAISSANCE VOCALE ──────────────────────────────────────────────────
-let _recognition   = null;
-let _isRecording   = false;
-let _voiceLang     = 'fr-FR';
-let _voiceFinal    = '';   // texte finalisé accumulé (sans les intérims)
-let _voiceInterim  = '';   // dernier fragment intérimaire (non finalisé)
-let _voiceRestart  = false; // vrai quand onend est un redémarrage automatique
-
-// ── Déduplication : évite les répétitions quand Chrome réenvoie un fragment ──
-// Cherche jusqu'à N mots de chevauchement entre la fin de `existing` et le
-// début de `newText`, et supprime le doublon avant de concaténer.
-function _voiceAppend(existing, newText) {
-  newText = newText.trim();
-  if (!newText) return existing;
-  const sep = existing && !existing.endsWith(' ') ? ' ' : '';
-  const exWords  = existing.trim().split(/\s+/).filter(Boolean);
-  const newWords = newText.split(/\s+/).filter(Boolean);
-  const maxOvlp  = Math.min(exWords.length, newWords.length, 8);
-  for (let n = maxOvlp; n >= 2; n--) {
-    const tail  = exWords.slice(-n).join(' ').toLowerCase();
-    const head  = newWords.slice(0, n).join(' ').toLowerCase();
-    if (tail === head) {
-      const rest = newWords.slice(n).join(' ');
-      return existing + (rest ? (existing.endsWith(' ') ? '' : ' ') + rest : '');
-    }
-  }
-  return existing + sep + newText;
-}
-
-function setVoiceLang(lang) {
-  _voiceLang = lang;
-  if (_isRecording) { stopRecording(); setTimeout(startRecording, 200); }
-  document.getElementById('voice-lang-fr').classList.toggle('active', lang === 'fr-FR');
-  document.getElementById('voice-lang-en').classList.toggle('active', lang === 'en-US');
-}
-
-function toggleRecording() {
-  _isRecording ? stopRecording() : startRecording();
-}
-
-function _createRecognition() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) return null;
-  const r = new SR();
-  r.lang            = _voiceLang;
-  r.continuous      = true;   // session longue
-  r.interimResults  = true;   // affichage en temps réel
-  r.maxAlternatives = 1;
-  return r;
-}
-
-function startRecording() {
-  const r = _createRecognition();
-  if (!r) {
-    document.getElementById('voice-rec-status').textContent =
-      '⚠ Reconnaissance vocale non supportée — utilisez Chrome ou Edge';
-    return;
-  }
-  _recognition = r;
-
-  r.onstart = () => {
-    _isRecording = true;
-    document.getElementById('voice-mic-btn').classList.add('recording');
-    document.getElementById('voice-mic-btn').textContent = '⏹';
-    if (!_voiceRestart) {
-      document.getElementById('voice-rec-status').innerHTML =
-        '<span style="color:#fc8181;">● Enregistrement en cours…</span>';
-    }
-    _voiceRestart = false;
-  };
-
-  r.onresult = e => {
-    let newFinal = '';
-    _voiceInterim = '';
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) newFinal += (newFinal ? ' ' : '') + t.trim();
-      else _voiceInterim += t;
-    }
-    // Déduplication : le fragment final peut chevaucher _voiceFinal si Chrome
-    // a réenvoyé quelque chose après un redémarrage automatique.
-    if (newFinal) _voiceFinal = _voiceAppend(_voiceFinal, newFinal);
-    const ta = document.getElementById('voice-transcript');
-    ta.value = _voiceFinal + (_voiceInterim ? (_voiceFinal ? ' ' : '') + _voiceInterim : '');
-    ta.scrollTop = ta.scrollHeight;
-    onVoiceTranscriptInput();
-  };
-
-  r.onerror = e => {
-    if (e.error === 'no-speech') return; // silence normal, pas une erreur
-    const msgs = { 'not-allowed': 'Microphone refusé dans le navigateur', 'network': 'Erreur réseau', 'aborted': '' };
-    const msg = msgs[e.error] !== undefined ? msgs[e.error] : e.error;
-    if (msg) document.getElementById('voice-rec-status').textContent = '⚠ ' + msg;
-    if (e.error !== 'aborted') stopRecording();
-  };
-
-  r.onend = () => {
-    if (!_isRecording) return; // arrêt volontaire → ne pas redémarrer
-    // Chrome coupe la session après silence même avec continuous=true.
-    // Avant de redémarrer : commit des intérims pour éviter les doublons.
-    if (_voiceInterim.trim()) {
-      _voiceFinal = _voiceAppend(_voiceFinal, _voiceInterim.trim());
-      _voiceInterim = '';
-      const ta = document.getElementById('voice-transcript');
-      if (ta) { ta.value = _voiceFinal; onVoiceTranscriptInput(); }
-    }
-    document.getElementById('voice-rec-status').innerHTML =
-      '<span style="color:#f6ad55;">⏸ Pause — reprise automatique…</span>';
-    _voiceRestart = true;
-    // Délai : évite le chevauchement de sessions Chrome
-    setTimeout(() => {
-      if (_isRecording) {
-        _recognition = _createRecognition();
-        // Réattache tous les handlers sur le nouvel objet
-        startRecordingSession(_recognition);
-      }
-    }, 350);
-  };
-
-  _voiceFinal = (document.getElementById('voice-transcript').value || '').trimEnd();
-  if (_voiceFinal) _voiceFinal += ' ';
-  try { r.start(); } catch(err) {
-    document.getElementById('voice-rec-status').textContent = '⚠ ' + err.message;
-  }
-}
-
-// Attache les handlers à un objet recognition existant (utilisé lors du redémarrage)
-function startRecordingSession(r) {
-  if (!r) return;
-  r.lang           = _voiceLang;
-  r.continuous     = true;
-  r.interimResults = true;
-  r.maxAlternatives = 1;
-
-  r.onstart = () => {
-    document.getElementById('voice-rec-status').innerHTML =
-      '<span style="color:#fc8181;">● Enregistrement en cours…</span>';
-    _voiceRestart = false;
-  };
-  r.onresult  = _recognition.onresult  = (() => {
-    // Même handler que ci-dessus — on réutilise via closure
-    const handler = e => {
-      let newFinal = ''; _voiceInterim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) newFinal += (newFinal ? ' ' : '') + t.trim();
-        else _voiceInterim += t;
-      }
-      if (newFinal) _voiceFinal = _voiceAppend(_voiceFinal, newFinal);
-      const ta = document.getElementById('voice-transcript');
-      ta.value = _voiceFinal + (_voiceInterim ? (_voiceFinal ? ' ' : '') + _voiceInterim : '');
-      ta.scrollTop = ta.scrollHeight;
-      onVoiceTranscriptInput();
-    };
-    r.onresult = handler;
-    return handler;
-  })();
-  r.onerror  = e => {
-    if (e.error === 'no-speech' || e.error === 'aborted') return;
-    const msgs = { 'not-allowed': 'Microphone refusé', 'network': 'Erreur réseau' };
-    document.getElementById('voice-rec-status').textContent = '⚠ ' + (msgs[e.error] || e.error);
-    stopRecording();
-  };
-  r.onend = _recognition.onend = (() => {
-    const handler = () => {
-      if (!_isRecording) return;
-      if (_voiceInterim.trim()) {
-        _voiceFinal = _voiceAppend(_voiceFinal, _voiceInterim.trim());
-        _voiceInterim = '';
-        const ta = document.getElementById('voice-transcript');
-        if (ta) { ta.value = _voiceFinal; onVoiceTranscriptInput(); }
-      }
-      document.getElementById('voice-rec-status').innerHTML =
-        '<span style="color:#f6ad55;">⏸ Pause — reprise automatique…</span>';
-      setTimeout(() => {
-        if (_isRecording) {
-          _recognition = _createRecognition();
-          startRecordingSession(_recognition);
-        }
-      }, 350);
-    };
-    r.onend = handler;
-    return handler;
-  })();
-
-  try { r.start(); } catch(err) {
-    document.getElementById('voice-rec-status').textContent = '⚠ ' + err.message;
-  }
-}
-
-function stopRecording() {
-  _isRecording = false;
-  _voiceInterim = '';
-  if (_recognition) { try { _recognition.stop(); } catch(_) {} _recognition = null; }
-  const btn = document.getElementById('voice-mic-btn');
-  if (btn) { btn.classList.remove('recording'); btn.textContent = '🎤'; }
-  const st = document.getElementById('voice-rec-status');
-  if (st) st.innerHTML = '<span style="color:#68d391;">✔ Enregistrement arrêté — vous pouvez corriger avant d\'envoyer</span>';
-}
-
-function clearVoiceTranscript() {
-  _voiceFinal = ''; _voiceInterim = '';
-  document.getElementById('voice-transcript').value = '';
-  document.getElementById('voice-rec-status').textContent = '';
-  onVoiceTranscriptInput();
-}
-
-function onVoiceTranscriptInput() {
-  const hasText = !!document.getElementById('voice-transcript').value.trim();
-  document.getElementById('claude-analyze-btn').disabled = !hasText;
-}
-
 async function analyzeWithClaude() {
-  const isVoice = _activePromptMode === 'voice';
-  if (!isVoice && !_claudePhotos.length) return;
-  if (isVoice && !document.getElementById('voice-transcript').value.trim()) return;
-
+  if (!_claudePhotos.length) return;
   const apiKey = getApiKey();
   if (!apiKey) { closeModal('modal-claude-ai'); openSettingsModal(); return; }
-  if (_isRecording) stopRecording();
 
   const analyzeBtn = document.getElementById('claude-analyze-btn');
   const status = document.getElementById('claude-status');
@@ -4321,27 +3996,19 @@ async function analyzeWithClaude() {
   document.getElementById('claude-result-wrap').style.display = 'none';
   document.getElementById('claude-import-btn').style.display = 'none';
 
+  const n = _claudePhotos.length;
+  const promptText = getPromptText(_activePromptMode);
   const model = getModel();
   const modelLabel = model.includes('haiku') ? 'Haiku ⚡' : model.includes('sonnet') ? 'Sonnet 🧠' : 'Opus 💎';
+  status.textContent = `⏳ Analyse de ${n} photo${n > 1 ? 's' : ''} avec ${modelLabel}…`;
 
-  let messageContent;
-  if (isVoice) {
-    const transcript = document.getElementById('voice-transcript').value.trim();
-    const promptText = getPromptText('voice').replace('[TRANSCRIPTION]', transcript);
-    messageContent = [{ type: 'text', text: promptText }];
-    status.textContent = `⏳ Formalisation de la dictée avec ${modelLabel}…`;
-  } else {
-    const n = _claudePhotos.length;
-    const promptText = getPromptText(_activePromptMode);
-    const imageBlocks = _claudePhotos.map(p => ({
-      type: 'image', source: { type: 'base64', media_type: p.mime, data: p.base64 }
-    }));
-    const textInstruction = n > 1
-      ? `Les ${n} photos ci-dessus montrent la MÊME procédure/requête sur plusieurs écrans consécutifs (photo 1 = début, photo ${n} = fin). Reconstitue le contenu complet dans l'ordre.\n\n` + promptText
-      : promptText;
-    messageContent = [...imageBlocks, { type: 'text', text: textInstruction }];
-    status.textContent = `⏳ Analyse de ${n} photo${n > 1 ? 's' : ''} avec ${modelLabel}…`;
-  }
+  const imageBlocks = _claudePhotos.map(p => ({
+    type: 'image', source: { type: 'base64', media_type: p.mime, data: p.base64 }
+  }));
+  const textInstruction = n > 1
+    ? `Les ${n} photos ci-dessus montrent la MÊME procédure/requête sur plusieurs écrans consécutifs (photo 1 = début, photo ${n} = fin). Reconstitue le contenu complet dans l'ordre.\n\n` + promptText
+    : promptText;
+  const messageContent = [...imageBlocks, { type: 'text', text: textInstruction }];
 
   try {
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
