@@ -799,6 +799,21 @@
   .sql-num  { color: #b794f4; }
   .sql-cmt  { color: #4a5568; font-style: italic; }
   .sql-type { color: #fc8181; }
+  /* Balises captures d'écran imbriquées dans le corps d'une procédure */
+  .capture-card {
+    display: flex; align-items: flex-start; gap: 10px;
+    margin: 10px 0; padding: 10px 14px;
+    background: #13152a; border: 1px solid #3d4470;
+    border-left: 3px solid #7c8cf8; border-radius: 8px;
+    font-size: 12px; line-height: 1.6; color: #a0aec0;
+    font-family: inherit; white-space: normal; word-break: break-word;
+  }
+  .capture-card-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+  .capture-card-body { flex: 1; }
+  .capture-card-label { font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .07em; color: #7c8cf8; margin-bottom: 3px; }
+  body.light .capture-card { background:#eef0fb; border-color:#b0b8e8; border-left-color:#3b5bd9; color:#3a4060; }
+  body.light .capture-card-label { color:#3b5bd9; }
 
   /* ── Proc body editor (overlay textarea + highlight div) ── */
   #proc-body-editor {
@@ -3138,7 +3153,16 @@ function showProcDetail(id) {
 
 // ─── SQL SYNTAX HIGHLIGHT (lightweight) ────────────────────────────────────
 function highlightSQL(code) {
-  const escaped = escHtml(code);
+  // Extrait et protège les balises [📸 CAPTURE: ...] avant le highlight SQL
+  // pour éviter que leurs contenus soient altérés par les regex de keywords.
+  const captureBlocks = [];
+  const placeholder = '\x00CAPTURE\x00';
+  const codeWithPlaceholders = code.replace(/\[📸 CAPTURE: ([^\]]*)\]/g, (_, desc) => {
+    captureBlocks.push(desc);
+    return placeholder + (captureBlocks.length - 1) + '\x00';
+  });
+
+  const escaped = escHtml(codeWithPlaceholders);
   const keywords = ['BEGIN','END','DECLARE','SET','SELECT','INSERT','UPDATE','DELETE',
     'FROM','WHERE','JOIN','LEFT','RIGHT','INNER','OUTER','ON','AS','INTO','VALUES',
     'IF','THEN','ELSE','ELSEIF','CASE','WHEN','RETURN','RETURNS','CREATE','REPLACE',
@@ -3176,6 +3200,15 @@ function highlightSQL(code) {
     result = result.replace(new RegExp(`\\b(${kw})\\b`, 'gi'),
       `<span class="sql-kw">$1</span>`);
   });
+
+  // Réinjecte les balises [📸 CAPTURE: ...] sous forme de cartes stylisées
+  result = result.replace(
+    new RegExp('\x00CAPTURE\x00(\\d+)\x00', 'g'),
+    (_, idx) => {
+      const desc = escHtml(captureBlocks[parseInt(idx)] || '');
+      return `<div class="capture-card"><span class="capture-card-icon">📸</span><div class="capture-card-body"><div class="capture-card-label">Capture d'écran</div>${desc}</div></div>`;
+    }
+  );
 
   return result;
 }
@@ -3942,6 +3975,11 @@ RÈGLES ABSOLUES :
 - Si des tables, données ou systèmes sources sont cités, liste-les dans "tables"
 - "description" = résumé d'une ligne de ce que fait la procédure, si distinct du corps principal
 
+CAPTURES D'ÉCRAN IMBRIQUÉES :
+Si la procédure contient des captures d'écran (fenêtres logicielles, formulaires, interfaces, menus, messages d'alerte, tableaux de données), insère à l'emplacement exact dans le "body" une balise de description détaillée :
+[📸 CAPTURE: description précise — cite le nom de la fenêtre ou application visible, les champs remplis, les boutons ou menus en surbrillance, les valeurs affichées, et toute information visible utile pour reproduire l'étape]
+Conserve ces balises dans l'ordre d'apparition dans la procédure. Ne les regroupe pas à la fin.
+
 FORMAT JSON À RETOURNER (retourne UNIQUEMENT ce JSON brut, sans texte avant ni après, sans markdown) :
 {
   "procedures": [
@@ -3950,7 +3988,7 @@ FORMAT JSON À RETOURNER (retourne UNIQUEMENT ce JSON brut, sans texte avant ni 
       "name": "[intitulé exact visible sur la photo]",
       "type": "PROCEDURE",
       "description": "[description courte si visible, sinon vide]",
-      "body": "[contenu textuel complet recopié fidèlement]",
+      "body": "[contenu textuel complet avec balises [📸 CAPTURE: ...] aux emplacements des captures]",
       "parameters": [],
       "tables": [],
       "flags": []
