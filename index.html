@@ -799,6 +799,92 @@
   .sql-num  { color: #b794f4; }
   .sql-cmt  { color: #4a5568; font-style: italic; }
   .sql-type { color: #fc8181; }
+  /* ── Capture d'écran — panel flottant ── */
+  #capture-panel {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    z-index: 2500; background: #1a1d2e; border: 1px solid #3d4470;
+    border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,.75);
+    padding: 14px 16px; min-width: 360px; max-width: 92vw;
+    display: none; flex-direction: column; gap: 10px;
+  }
+  #capture-panel.active { display: flex; }
+  #capture-panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 13px; font-weight: 700; color: #e2e8f0;
+  }
+  #capture-rec-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: #fc8181;
+    display: inline-block; margin-right: 6px;
+    animation: blink-dot 1.2s ease infinite;
+  }
+  @keyframes blink-dot { 0%,100%{opacity:1} 50%{opacity:.2} }
+  #capture-thumbs {
+    display: flex; gap: 6px; flex-wrap: wrap; min-height: 52px;
+    align-items: center;
+  }
+  .cap-thumb {
+    position: relative; width: 72px; height: 52px;
+    border-radius: 6px; overflow: hidden; border: 1.5px solid #2d3150;
+    cursor: pointer; flex-shrink: 0;
+  }
+  .cap-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .cap-thumb-num {
+    position: absolute; bottom: 2px; right: 4px;
+    font-size: 9px; font-weight: 700; color: #fff;
+    text-shadow: 0 1px 3px #000;
+  }
+  .cap-thumb-rm {
+    position: absolute; top: 2px; right: 2px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: rgba(229,62,62,.85); border: none; cursor: pointer;
+    font-size: 8px; color: #fff; display: none;
+    align-items: center; justify-content: center; line-height: 1;
+  }
+  .cap-thumb:hover .cap-thumb-rm { display: flex; }
+  #capture-empty-hint {
+    font-size: 11px; color: #4a5568;
+    padding: 8px 0;
+  }
+  #capture-panel-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  #capture-snap-btn {
+    padding: 8px 14px; border-radius: 8px; border: none;
+    background: #7c8cf8; color: #fff; font-weight: 700;
+    font-size: 12px; cursor: pointer; transition: background .15s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  #capture-snap-btn:hover { background: #6675e0; }
+  #capture-snap-btn kbd {
+    background: rgba(255,255,255,.2); border-radius: 4px;
+    padding: 1px 5px; font-size: 11px; font-family: monospace;
+  }
+  /* Flash blanc au moment de la capture */
+  @keyframes cap-flash { 0%{opacity:.7} 100%{opacity:0} }
+  #capture-flash {
+    position: fixed; inset: 0; background: #fff;
+    pointer-events: none; z-index: 9998;
+    opacity: 0; border-radius: 0;
+  }
+  #capture-flash.flashing { animation: cap-flash .18s ease forwards; }
+
+  /* Section captures dans le modal procédure */
+  #proc-draft-captures-section {
+    margin-top: 10px; padding: 10px 12px;
+    background: #0d0f1a; border: 1px solid #2d3150; border-radius: 8px;
+  }
+  #proc-draft-captures-grid {
+    display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;
+  }
+  .proc-draft-thumb {
+    position: relative; width: 80px; height: 58px;
+    border-radius: 6px; overflow: hidden; border: 1.5px solid #2d3150;
+  }
+  .proc-draft-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .proc-draft-thumb-num {
+    position: absolute; bottom: 2px; right: 4px;
+    font-size: 9px; font-weight: 700; color: #fff;
+    text-shadow: 0 1px 3px #000;
+  }
+
   /* Balises captures d'écran imbriquées dans le corps d'une procédure */
   .capture-card {
     display: flex; align-items: flex-start; gap: 10px;
@@ -1217,6 +1303,7 @@
   <!-- Procedures tab buttons -->
   <div id="toolbar-proc" style="display:none;align-items:center;gap:10px;">
     <button class="btn btn-primary" onclick="openAddProcModal()">+ Procédure</button>
+    <button class="btn btn-secondary" onclick="startScreenCapture()" title="Capturer des screenshots et créer une procédure ou les envoyer à Claude IA (touche 0)">📷 Capturer</button>
     <button class="btn btn-secondary" onclick="openClaudeAIModal()" title="Analyser une photo avec Claude IA et importer directement">🤖 Claude IA</button>
     <button class="btn btn-secondary" onclick="openPromptModal()" title="Obtenir le prompt à copier dans Claude pour import manuel">📋 Prompt</button>
     <div class="sep"></div>
@@ -1628,6 +1715,15 @@
         <textarea id="proc-body" rows="14" placeholder="Décrivez ou saisissez le contenu de la procédure..." spellcheck="false" autocorrect="off" autocapitalize="off"></textarea>
       </div>
     </div>
+    <!-- Section captures pré-chargées depuis le mode Capturer -->
+    <div id="proc-draft-captures-section" style="display:none;">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#4a5568;margin-bottom:6px;">
+        📸 Captures d'écran associées
+        <button type="button" onclick="clearProcDraftCaptures()" style="margin-left:8px;font-size:10px;padding:1px 7px;border-radius:5px;border:1px solid #2d3150;background:transparent;color:#4a5568;cursor:pointer;">✕ Supprimer</button>
+      </div>
+      <div id="proc-draft-captures-grid"></div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('modal-proc')">Annuler</button>
       <button class="btn btn-primary" onclick="confirmSaveProc()">Enregistrer</button>
@@ -1683,6 +1779,24 @@
       <button class="btn btn-secondary" onclick="closeModal('modal-import-procs')">Annuler</button>
       <button class="btn btn-primary" onclick="confirmImportProcs()">Importer</button>
     </div>
+  </div>
+</div>
+
+<!-- PANEL CAPTURE D'ÉCRAN -->
+<div id="capture-panel">
+  <div id="capture-flash"></div>
+  <div id="capture-panel-header">
+    <span><span id="capture-rec-dot"></span>Capture d'écran en cours</span>
+    <span id="capture-count-badge" style="font-size:11px;color:#718096;font-weight:400;">0 capture</span>
+  </div>
+  <div id="capture-thumbs">
+    <span id="capture-empty-hint">Appuyez sur 📸 ou la touche <kbd style="background:#252840;border-radius:4px;padding:1px 6px;font-family:monospace;">0</kbd> pour capturer l'écran</span>
+  </div>
+  <div id="capture-panel-actions">
+    <button id="capture-snap-btn" onclick="takeScreenshot()">📸 Capturer <kbd>0</kbd></button>
+    <button id="capture-to-proc-btn" class="btn btn-secondary" style="font-size:12px;padding:6px 12px;" onclick="captureToNewProc()" disabled>📄 Créer procédure</button>
+    <button id="capture-to-claude-btn" class="btn btn-secondary" style="font-size:12px;padding:6px 12px;" onclick="captureToClaudeAI()" disabled>🤖 Claude IA</button>
+    <button class="btn btn-danger" style="font-size:12px;padding:6px 10px;margin-left:auto;" onclick="stopScreenCapture(true)">✕ Annuler</button>
   </div>
 </div>
 
@@ -1862,8 +1976,19 @@ document.addEventListener('DOMContentLoaded', () => {
   _initRelMenu();
   document.addEventListener('click', closeContextMenu);
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') { closeAllModals(); closeContextMenu(); hideRelMenu(); }
+    if (e.key === 'Escape') {
+      closeAllModals(); closeContextMenu(); hideRelMenu();
+      if (_captureStream) stopScreenCapture(false); // cache le panel sans annuler
+    }
     if (e.key === 'Delete' && selectedTable && currentTab === 'schema') deleteTable(selectedTable);
+    // Touche 0 → prendre un screenshot si la capture est active et aucun champ saisi ciblé
+    if (e.key === '0' && _captureStream) {
+      const tag = document.activeElement?.tagName;
+      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+        e.preventDefault();
+        takeScreenshot();
+      }
+    }
   });
 });
 
@@ -3450,6 +3575,7 @@ function openAddProcModal() {
   document.getElementById('proc-body').value = '';
   document.getElementById('params-list').innerHTML = '';
   document.getElementById('find-replace-bar').style.display = 'none';
+  document.getElementById('proc-draft-captures-section').style.display = 'none';
   renderFlagChips([]);
   openModal('modal-proc');
   initProcBodyEditor();
@@ -3515,6 +3641,16 @@ function confirmSaveProc() {
     body: document.getElementById('proc-body').value,
     updatedAt: new Date().toISOString().slice(0,10)
   };
+
+  // Attache les captures d'écran pré-chargées depuis le mode Capturer
+  if (_procDraftCaptures && _procDraftCaptures.length) {
+    proc.captures = _procDraftCaptures.map((c, i) => ({ desc: c.desc || `Capture ${i+1}`, imageData: c.imageData }));
+    if (!proc.body.trim()) {
+      proc.body = _procDraftCaptures.map((_, i) => `[CAPTURE:${i}]`).join('\n');
+    }
+    _procDraftCaptures = null;
+    document.getElementById('proc-draft-captures-section').style.display = 'none';
+  }
 
   const editId = document.getElementById('proc-edit-id').value;
   if (!schema.procedures) schema.procedures = [];
@@ -4146,6 +4282,162 @@ async function _fetchWithTimeout(url, options, timeoutMs) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+// ─── CAPTURE D'ÉCRAN ────────────────────────────────────────────────────────
+let _captureStream  = null;   // MediaStream actif
+let _captureVideo   = null;   // <video> pour lire le flux
+let _captureShots   = [];     // [{dataUrl, base64, mime}]
+let _procDraftCaptures = null; // captures en attente d'attachement au modal proc
+
+async function startScreenCapture() {
+  if (_captureStream) { // déjà actif → juste montrer le panel
+    document.getElementById('capture-panel').classList.add('active');
+    return;
+  }
+  if (!navigator.mediaDevices?.getDisplayMedia) {
+    alert('La capture d\'écran n\'est pas supportée par ce navigateur.\nUtilisez Chrome ou Edge.');
+    return;
+  }
+  try {
+    _captureStream = await navigator.mediaDevices.getDisplayMedia({
+      video: { cursor: 'always' }, audio: false
+    });
+  } catch(e) {
+    if (e.name !== 'NotAllowedError') console.error(e);
+    return; // utilisateur a annulé
+  }
+  // Crée un élément video silencieux pour lire le flux
+  _captureVideo = document.createElement('video');
+  _captureVideo.srcObject = _captureStream;
+  _captureVideo.muted = true;
+  await _captureVideo.play();
+
+  // Si l'utilisateur arrête via le bouton navigateur
+  _captureStream.getVideoTracks()[0].addEventListener('ended', () => stopScreenCapture(false));
+
+  _captureShots = [];
+  _renderCaptureThumbs();
+  document.getElementById('capture-panel').classList.add('active');
+  showToast('📷 Capture active — appuyez sur 0 pour capturer');
+}
+
+function takeScreenshot() {
+  if (!_captureVideo || !_captureStream) return;
+  const v = _captureVideo;
+  const canvas = document.createElement('canvas');
+  canvas.width  = v.videoWidth  || 1920;
+  canvas.height = v.videoHeight || 1080;
+  canvas.getContext('2d').drawImage(v, 0, 0, canvas.width, canvas.height);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+  const base64  = dataUrl.split(',')[1];
+  _captureShots.push({ dataUrl, base64, mime: 'image/jpeg',
+    origSize: Math.round(base64.length * 0.75 / 1024),
+    newKB: Math.round(base64.length * 0.75 / 1024),
+    origW: canvas.width, origH: canvas.height,
+    newW: canvas.width,  newH: canvas.height });
+  _renderCaptureThumbs();
+  // Flash visuel de confirmation
+  const flash = document.getElementById('capture-flash');
+  flash.classList.remove('flashing');
+  void flash.offsetWidth; // reflow
+  flash.classList.add('flashing');
+  showToast(`📸 Capture ${_captureShots.length} prise`);
+}
+
+function removeCapture(i) {
+  _captureShots.splice(i, 1);
+  _renderCaptureThumbs();
+}
+
+function _renderCaptureThumbs() {
+  const grid  = document.getElementById('capture-thumbs');
+  const hint  = document.getElementById('capture-empty-hint');
+  const badge = document.getElementById('capture-count-badge');
+  const n = _captureShots.length;
+  badge.textContent = n === 0 ? '0 capture' : `${n} capture${n>1?'s':''}`;
+  if (n === 0) {
+    grid.innerHTML = '';
+    grid.appendChild(hint);
+    document.getElementById('capture-to-proc-btn').disabled   = true;
+    document.getElementById('capture-to-claude-btn').disabled = true;
+    return;
+  }
+  hint.remove();
+  grid.innerHTML = '';
+  _captureShots.forEach((s, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'cap-thumb';
+    wrap.innerHTML = `<img src="${s.dataUrl}" alt="cap ${i+1}">
+      <span class="cap-thumb-num">${i+1}</span>
+      <button class="cap-thumb-rm" onclick="removeCapture(${i})" title="Supprimer">✕</button>`;
+    grid.appendChild(wrap);
+  });
+  document.getElementById('capture-to-proc-btn').disabled   = false;
+  document.getElementById('capture-to-claude-btn').disabled = false;
+}
+
+function stopScreenCapture(discard = false) {
+  if (_captureStream) {
+    _captureStream.getTracks().forEach(t => t.stop());
+    _captureStream = null;
+  }
+  _captureVideo = null;
+  document.getElementById('capture-panel').classList.remove('active');
+  if (discard) {
+    _captureShots = [];
+    showToast('Capture annulée');
+  }
+}
+
+function captureToNewProc() {
+  if (!_captureShots.length) return;
+  _procDraftCaptures = _captureShots.map((s, i) => ({
+    desc: `Capture ${i+1}`,
+    imageData: s.dataUrl
+  }));
+  stopScreenCapture(false);
+  openAddProcModal();
+  // Affiche les captures dans le modal
+  setTimeout(_showProcDraftCaptures, 80);
+}
+
+function captureToClaudeAI() {
+  if (!_captureShots.length) return;
+  stopScreenCapture(false);
+  // Injecte les screenshots dans _claudePhotos puis ouvre le modal Claude IA
+  _claudePhotos = [..._captureShots];
+  openClaudeAIModal();
+  // renderClaudeThumbs est appelé dans openClaudeAIModal → mais _claudePhotos est réinitialisé !
+  // On recharge après l'ouverture
+  setTimeout(() => {
+    _claudePhotos = _captureShots.map(s => ({...s}));
+    renderClaudeThumbs();
+    document.getElementById('claude-status').textContent =
+      `📷 ${_claudePhotos.length} capture${_claudePhotos.length>1?'s':''} chargée${_claudePhotos.length>1?'s':''} — choisissez le mode et cliquez sur Analyser`;
+    _captureShots = [];
+  }, 100);
+}
+
+// Section captures dans le modal proc
+function _showProcDraftCaptures() {
+  if (!_procDraftCaptures || !_procDraftCaptures.length) return;
+  const section = document.getElementById('proc-draft-captures-section');
+  const grid    = document.getElementById('proc-draft-captures-grid');
+  grid.innerHTML = '';
+  _procDraftCaptures.forEach((cap, i) => {
+    const d = document.createElement('div');
+    d.className = 'proc-draft-thumb';
+    d.innerHTML = `<img src="${cap.imageData}" alt="cap ${i+1}">
+      <span class="proc-draft-thumb-num">${i+1}</span>`;
+    grid.appendChild(d);
+  });
+  section.style.display = 'block';
+}
+
+function clearProcDraftCaptures() {
+  _procDraftCaptures = null;
+  document.getElementById('proc-draft-captures-section').style.display = 'none';
 }
 
 // ─── CROP CAPTURES ──────────────────────────────────────────────────────────
