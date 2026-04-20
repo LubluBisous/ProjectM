@@ -3073,7 +3073,11 @@ function showProcDetail(id) {
   const proc = (schema.procedures||[]).find(p => p.id === id);
   if (!proc) return;
 
-  renderProcList(document.getElementById('proc-search').value);
+  renderProcList(
+    document.getElementById('proc-search').value,
+    document.getElementById('proc-filter-type').value,
+    document.getElementById('proc-filter-flag').value
+  );
   updateProcJsonBtnLabel();
 
   document.getElementById('proc-empty').style.display = 'none';
@@ -3140,15 +3144,71 @@ function showProcDetail(id) {
     html += `</div></div>`;
   }
 
-  // SQL Body
+  // Corps de la procédure
   if (proc.body) {
+    const isSQL = ['REQUETE','PROCEDURE','FUNCTION'].includes((proc.type||'').toUpperCase());
+    const title = isSQL ? 'Corps SQL' : 'Corps';
     html += `<div class="proc-section">
-      <div class="proc-section-title">Corps SQL</div>
-      <div class="code-block">${highlightSQL(proc.body)}</div>
+      <div class="proc-section-title">${title}</div>
+      <div class="code-block">${renderProcBody(proc)}</div>
     </div>`;
   }
 
   document.getElementById('proc-view-body').innerHTML = html;
+}
+
+// ─── RENDU DU CORPS DE PROCÉDURE (texte + captures imbriquées) ──────────────
+function renderProcBody(proc) {
+  const body = proc.body || '';
+  const captures = proc.captures || [];
+
+  // S'il n'y a pas de balises [CAPTURE:N], rendu SQL classique
+  if (!captures.length || !body.includes('[CAPTURE:')) {
+    return highlightSQL(body);
+  }
+
+  // Découpe le corps en segments texte / référence de capture
+  const parts = body.split(/(\[CAPTURE:\d+\])/);
+  let html = '';
+  parts.forEach(part => {
+    const m = part.match(/^\[CAPTURE:(\d+)\]$/);
+    if (!m) {
+      if (part) html += highlightSQL(part);
+      return;
+    }
+    const cap = captures[parseInt(m[1])];
+    if (!cap) return;
+    if (cap.imageData) {
+      // Image réelle recadrée
+      html += `</div>
+        <div class="capture-card" style="flex-direction:column;gap:6px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="capture-card-icon">📸</span>
+            <div class="capture-card-body">
+              <div class="capture-card-label">Capture d'écran</div>
+              ${cap.desc ? `<span style="font-size:11px;color:#718096;">${escHtml(cap.desc)}</span>` : ''}
+            </div>
+          </div>
+          <img src="${cap.imageData}"
+            style="max-width:100%;border-radius:6px;border:1px solid #2d3150;cursor:zoom-in;"
+            onclick="this.style.maxWidth=this.style.maxWidth==='100%'?'none':'100%'"
+            title="Cliquer pour agrandir / réduire" alt="Capture ${m[1]}">
+        </div>
+        <div class="code-block" style="border-top:none;border-radius:0 0 8px 8px;margin-top:0;">`;
+    } else {
+      // Pas d'image (bbox manquante) → carte descriptive de secours
+      html += `</div>
+        <div class="capture-card">
+          <span class="capture-card-icon">📸</span>
+          <div class="capture-card-body">
+            <div class="capture-card-label">Capture d'écran</div>
+            ${cap.desc ? escHtml(cap.desc) : ''}
+          </div>
+        </div>
+        <div class="code-block" style="border-top:none;border-radius:0 0 8px 8px;margin-top:0;">`;
+    }
+  });
+  return html;
 }
 
 // ─── SQL SYNTAX HIGHLIGHT (lightweight) ────────────────────────────────────
@@ -3976,9 +4036,15 @@ RÈGLES ABSOLUES :
 - "description" = résumé d'une ligne de ce que fait la procédure, si distinct du corps principal
 
 CAPTURES D'ÉCRAN IMBRIQUÉES :
-Si la procédure contient des captures d'écran (fenêtres logicielles, formulaires, interfaces, menus, messages d'alerte, tableaux de données), insère à l'emplacement exact dans le "body" une balise de description détaillée :
-[📸 CAPTURE: description précise — cite le nom de la fenêtre ou application visible, les champs remplis, les boutons ou menus en surbrillance, les valeurs affichées, et toute information visible utile pour reproduire l'étape]
-Conserve ces balises dans l'ordre d'apparition dans la procédure. Ne les regroupe pas à la fin.
+Si la procédure contient des captures d'écran imbriquées (fenêtres logicielles, formulaires, interfaces, menus, messages, tableaux), pour chacune :
+1. Dans le "body", insère la balise [CAPTURE:N] (N = index commençant à 0) à l'emplacement EXACT dans le texte
+2. Dans le tableau "captures", décris chaque capture avec :
+   - "desc" : description courte de ce que montre la capture
+   - "photo" : index de la photo source (0 = première photo envoyée)
+   - "x", "y" : coordonnées en POURCENTAGE (0-100) du coin supérieur gauche de la capture dans la photo
+   - "w", "h" : largeur et hauteur en POURCENTAGE (0-100) dans la photo
+Sois précis dans les coordonnées — elles servent à recadrer automatiquement la capture réelle.
+Si aucune capture d'écran n'est présente, laisse "captures" vide.
 
 FORMAT JSON À RETOURNER (retourne UNIQUEMENT ce JSON brut, sans texte avant ni après, sans markdown) :
 {
@@ -3988,10 +4054,13 @@ FORMAT JSON À RETOURNER (retourne UNIQUEMENT ce JSON brut, sans texte avant ni 
       "name": "[intitulé exact visible sur la photo]",
       "type": "PROCEDURE",
       "description": "[description courte si visible, sinon vide]",
-      "body": "[contenu textuel complet avec balises [📸 CAPTURE: ...] aux emplacements des captures]",
+      "body": "[texte avec [CAPTURE:0], [CAPTURE:1]… aux emplacements des captures]",
       "parameters": [],
       "tables": [],
-      "flags": []
+      "flags": [],
+      "captures": [
+        { "desc": "Fenêtre MX3 — champs Montant et Devise remplis", "photo": 0, "x": 12.5, "y": 34.0, "w": 75.0, "h": 28.0 }
+      ]
     }
   ]
 }`,
@@ -4079,6 +4148,56 @@ async function _fetchWithTimeout(url, options, timeoutMs) {
   }
 }
 
+// ─── CROP CAPTURES ──────────────────────────────────────────────────────────
+// Stockage temporaire des images rognées entre analyse et import
+let _pendingCaptures = {}; // clé "p{procIdx}c{capIdx}" → dataURL
+
+function _cropBase64Image(base64, mime, xPct, yPct, wPct, hPct) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onerror = reject;
+    img.onload = () => {
+      // Ajoute 2% de marge pour ne pas couper les bords
+      const pad = 2;
+      const x = Math.max(0, Math.round((xPct - pad) / 100 * img.width));
+      const y = Math.max(0, Math.round((yPct - pad) / 100 * img.height));
+      const w = Math.min(img.width  - x, Math.round((wPct + pad * 2) / 100 * img.width));
+      const h = Math.min(img.height - y, Math.round((hPct + pad * 2) / 100 * img.height));
+      const cvs = document.createElement('canvas');
+      cvs.width = w; cvs.height = h;
+      cvs.getContext('2d').drawImage(img, x, y, w, h, 0, 0, w, h);
+      resolve(cvs.toDataURL('image/jpeg', 0.9));
+    };
+    img.src = `data:${mime || 'image/jpeg'};base64,${base64}`;
+  });
+}
+
+async function _extractCaptureImages(procedures) {
+  if (!_claudePhotos.length || !procedures) return procedures;
+  _pendingCaptures = {};
+  for (let pi = 0; pi < procedures.length; pi++) {
+    const proc = procedures[pi];
+    if (!proc.captures || !proc.captures.length) continue;
+    for (let ci = 0; ci < proc.captures.length; ci++) {
+      const cap = proc.captures[ci];
+      if (typeof cap.x !== 'number') continue; // pas de bbox
+      const photoIdx = Math.min(cap.photo || 0, _claudePhotos.length - 1);
+      const photo = _claudePhotos[photoIdx];
+      if (!photo) continue;
+      try {
+        const key = `p${pi}c${ci}`;
+        _pendingCaptures[key] = await _cropBase64Image(
+          photo.base64, photo.mime, cap.x, cap.y, cap.w, cap.h
+        );
+        // Simplifie la capture dans le JSON affiché (pas de base64 dans la textarea)
+        cap._capRef = key;
+        delete cap.x; delete cap.y; delete cap.w; delete cap.h; delete cap.photo;
+      } catch(e) { console.warn('Crop failed', cap, e); }
+    }
+  }
+  return procedures;
+}
+
 async function analyzeWithClaude() {
   if (!_claudePhotos.length) return;
   const apiKey = getApiKey();
@@ -4149,6 +4268,16 @@ async function analyzeWithClaude() {
       const fence = text.match(/```(?:json)?\s*([\s\S]+?)\s*```/);
       if (fence) text = fence[1].trim();
 
+      // Post-traitement : crop des captures d'écran imbriquées
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed.procedures && _claudePhotos.length) {
+          status.textContent = '⏳ Recadrage des captures d\'écran…';
+          await _extractCaptureImages(parsed.procedures);
+          text = JSON.stringify(parsed, null, 2);
+        }
+      } catch(_) { /* JSON invalide ou pas de captures → on garde le texte brut */ }
+
       document.getElementById('claude-result-text').value = text;
       document.getElementById('claude-result-wrap').style.display = 'block';
       document.getElementById('claude-import-btn').style.display = 'inline-flex';
@@ -4181,7 +4310,20 @@ function importClaudeResult() {
   const txt = document.getElementById('claude-result-text').value.trim();
   if (!txt) return;
   try {
-    mergeProcedures(JSON.parse(txt));
+    const parsed = JSON.parse(txt);
+    // Résout les références de captures (_capRef → imageData)
+    if (parsed.procedures) {
+      parsed.procedures.forEach(proc => {
+        if (!proc.captures) return;
+        proc.captures.forEach(cap => {
+          if (cap._capRef && _pendingCaptures[cap._capRef]) {
+            cap.imageData = _pendingCaptures[cap._capRef];
+            delete cap._capRef;
+          }
+        });
+      });
+    }
+    mergeProcedures(parsed);
     closeModal('modal-claude-ai');
   } catch(e) {
     alert('JSON invalide : ' + e.message);
