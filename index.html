@@ -857,6 +857,16 @@
     background: rgba(255,255,255,.2); border-radius: 4px;
     padding: 1px 5px; font-size: 11px; font-family: monospace;
   }
+  /* Boutons source capture */
+  .cap-src-btn {
+    padding: 4px 10px; border-radius: 20px; border: 1.5px solid #3d4470;
+    background: transparent; color: #718096; font-size: 11px; font-weight: 600;
+    cursor: pointer; transition: all .15s; white-space: nowrap;
+  }
+  .cap-src-btn:hover { border-color: #7c8cf8; color: #a5b4fc; }
+  .cap-src-btn.active {
+    background: #7c8cf8; border-color: #7c8cf8; color: #fff;
+  }
   /* Flash blanc au moment de la capture */
   @keyframes cap-flash { 0%{opacity:.7} 100%{opacity:0} }
   #capture-flash {
@@ -1786,17 +1796,28 @@
 <div id="capture-panel">
   <div id="capture-flash"></div>
   <div id="capture-panel-header">
-    <span><span id="capture-rec-dot"></span>Capture d'écran en cours</span>
+    <span><span id="capture-rec-dot"></span>Capture d'écran</span>
     <span id="capture-count-badge" style="font-size:11px;color:#718096;font-weight:400;">0 capture</span>
   </div>
+  <!-- Sélecteur de source -->
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <span style="font-size:11px;color:#4a5568;white-space:nowrap;">Source :</span>
+    <div id="capture-source-btns" style="display:flex;gap:5px;">
+      <button id="cap-src-monitor" class="cap-src-btn" onclick="setCaptureSource('monitor')">🖥 Écran entier</button>
+      <button id="cap-src-window"  class="cap-src-btn" onclick="setCaptureSource('window')">🪟 Fenêtre</button>
+      <button id="cap-src-browser" class="cap-src-btn" onclick="setCaptureSource('browser')">📑 Onglet</button>
+    </div>
+    <span id="capture-source-hint" style="font-size:10px;color:#4a5568;font-style:italic;"></span>
+  </div>
   <div id="capture-thumbs">
-    <span id="capture-empty-hint">Appuyez sur 📸 ou la touche <kbd style="background:#252840;border-radius:4px;padding:1px 6px;font-family:monospace;">0</kbd> pour capturer l'écran</span>
+    <span id="capture-empty-hint">Appuyez sur 📸 ou la touche <kbd style="background:#252840;border-radius:4px;padding:1px 6px;font-family:monospace;">0</kbd> pour capturer</span>
   </div>
   <div id="capture-panel-actions">
     <button id="capture-snap-btn" onclick="takeScreenshot()">📸 Capturer <kbd>0</kbd></button>
     <button id="capture-to-proc-btn" class="btn btn-secondary" style="font-size:12px;padding:6px 12px;" onclick="captureToNewProc()" disabled>📄 Créer procédure</button>
     <button id="capture-to-claude-btn" class="btn btn-secondary" style="font-size:12px;padding:6px 12px;" onclick="captureToClaudeAI()" disabled>🤖 Claude IA</button>
-    <button class="btn btn-danger" style="font-size:12px;padding:6px 10px;margin-left:auto;" onclick="stopScreenCapture(true)">✕ Annuler</button>
+    <button class="btn btn-secondary" style="font-size:12px;padding:6px 10px;margin-left:auto;" onclick="stopScreenCapture(false)" title="Arrête le stream mais garde les captures">⏹ Arrêter</button>
+    <button class="btn btn-danger"    style="font-size:12px;padding:6px 10px;" onclick="stopScreenCapture(true)" title="Arrête et supprime toutes les captures">✕</button>
   </div>
 </div>
 
@@ -1978,7 +1999,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       closeAllModals(); closeContextMenu(); hideRelMenu();
-      if (_captureStream) stopScreenCapture(false); // cache le panel sans annuler
+      if (_captureStream) hideCapturePanelOnly(); // cache le panel sans arrêter la capture
     }
     if (e.key === 'Delete' && selectedTable && currentTab === 'schema') deleteTable(selectedTable);
     // Touche 0 → prendre un screenshot si la capture est active et aucun champ saisi ciblé
@@ -4290,18 +4311,48 @@ let _captureVideo   = null;   // <video> pour lire le flux
 let _captureShots   = [];     // [{dataUrl, base64, mime}]
 let _procDraftCaptures = null; // captures en attente d'attachement au modal proc
 
+function _getCaptureSource() {
+  return localStorage.getItem('capture_surface') || 'monitor';
+}
+
+function _updateCaptureSourceUI() {
+  const src = _getCaptureSource();
+  document.querySelectorAll('.cap-src-btn').forEach(btn => btn.classList.remove('active'));
+  const map = { monitor: 'cap-src-monitor', window: 'cap-src-window', browser: 'cap-src-browser' };
+  const el = document.getElementById(map[src]);
+  if (el) el.classList.add('active');
+}
+
+async function setCaptureSource(val) {
+  localStorage.setItem('capture_surface', val);
+  _updateCaptureSourceUI();
+  // Si une capture est déjà active, redémarre avec la nouvelle source
+  if (_captureStream) {
+    _captureStream.getTracks().forEach(t => t.stop());
+    _captureStream = null;
+    _captureVideo  = null;
+    await startScreenCapture();
+  }
+}
+
+function hideCapturePanelOnly() {
+  document.getElementById('capture-panel').classList.remove('active');
+}
+
 async function startScreenCapture() {
   if (_captureStream) { // déjà actif → juste montrer le panel
     document.getElementById('capture-panel').classList.add('active');
+    _updateCaptureSourceUI();
     return;
   }
   if (!navigator.mediaDevices?.getDisplayMedia) {
     alert('La capture d\'écran n\'est pas supportée par ce navigateur.\nUtilisez Chrome ou Edge.');
     return;
   }
+  const surface = _getCaptureSource();
   try {
     _captureStream = await navigator.mediaDevices.getDisplayMedia({
-      video: { cursor: 'always' }, audio: false
+      video: { cursor: 'always', displaySurface: surface }, audio: false
     });
   } catch(e) {
     if (e.name !== 'NotAllowedError') console.error(e);
@@ -4318,6 +4369,7 @@ async function startScreenCapture() {
 
   _captureShots = [];
   _renderCaptureThumbs();
+  _updateCaptureSourceUI();
   document.getElementById('capture-panel').classList.add('active');
   showToast('📷 Capture active — appuyez sur 0 pour capturer');
 }
