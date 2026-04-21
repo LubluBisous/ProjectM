@@ -3248,6 +3248,7 @@ function showProcDetail(id) {
   document.getElementById('proc-edit-btn').onclick = () => openEditProcModal(id);
   document.getElementById('proc-delete-btn').onclick = () => {
     if (confirm(`Supprimer la procédure "${proc.name}" ?`)) {
+      _dbDeleteProcCaptures(proc); // nettoyage IDB (async, sans attendre)
       schema.procedures = schema.procedures.filter(p => p.id !== id);
       selectedProcId = null;
       saveToStorage();
@@ -3300,7 +3301,10 @@ function showProcDetail(id) {
     </div>`;
   }
 
-  document.getElementById('proc-view-body').innerHTML = html;
+  const viewBody = document.getElementById('proc-view-body');
+  viewBody.innerHTML = html;
+  // Charge les captures depuis IndexedDB (async, non bloquant)
+  _loadCaptureImages(viewBody);
 }
 
 // ─── RENDU DU CORPS DE PROCÉDURE (texte + captures imbriquées) ──────────────
@@ -3324,8 +3328,11 @@ function renderProcBody(proc) {
     }
     const cap = captures[parseInt(m[1])];
     if (!cap) return;
-    if (cap.imageData) {
-      // Image réelle recadrée
+    if (cap.imageData || cap.captureRef) {
+      // imageData = legacy base64 inline ; captureRef = clé IndexedDB (chargée async après rendu)
+      const imgAttr = cap.imageData
+        ? `src="${cap.imageData}"`
+        : `data-capture-ref="${cap.captureRef}" src=""`;
       html += `</div>
         <div class="capture-card" style="flex-direction:column;gap:6px;">
           <div style="display:flex;align-items:center;gap:8px;">
@@ -3335,7 +3342,7 @@ function renderProcBody(proc) {
               ${cap.desc ? `<span style="font-size:11px;color:#718096;">${escHtml(cap.desc)}</span>` : ''}
             </div>
           </div>
-          <img src="${cap.imageData}"
+          <img ${imgAttr}
             style="max-width:100%;border-radius:6px;border:1px solid #2d3150;cursor:zoom-in;"
             onclick="this.style.maxWidth=this.style.maxWidth==='100%'?'none':'100%'"
             title="Cliquer pour agrandir / réduire" alt="Capture ${m[1]}">
@@ -3665,7 +3672,7 @@ function confirmSaveProc() {
 
   // Attache les captures d'écran pré-chargées depuis le mode Capturer
   if (_procDraftCaptures && _procDraftCaptures.length) {
-    proc.captures = _procDraftCaptures.map((c, i) => ({ desc: c.desc || `Capture ${i+1}`, imageData: c.imageData }));
+    proc.captures = _procDraftCaptures.map((c, i) => ({ desc: c.desc || `Capture ${i+1}`, captureRef: c.captureRef }));
     if (!proc.body.trim()) {
       proc.body = _procDraftCaptures.map((_, i) => `[CAPTURE:${i}]`).join('\n');
     }
@@ -3725,15 +3732,24 @@ function exportProcsJSON() {
   showToast(`${all.length} procédure${all.length>1?'s':''} exportée${all.length>1?'s':''}`);
 }
 
-function exportSingleProcJSON(id) {
+async function exportSingleProcJSON(id) {
   const proc = (schema.procedures||[]).find(p => p.id === id);
   if (!proc) return;
+  // Deep-copy + réintègre les images IDB en base64 pour que le fichier soit autonome
+  const exportProc = JSON.parse(JSON.stringify(proc));
+  if (exportProc.captures) {
+    for (const cap of exportProc.captures) {
+      if (cap.captureRef && !cap.imageData) {
+        const dataUrl = await _dbGetCaptureDataUrl(cap.captureRef);
+        if (dataUrl) { cap.imageData = dataUrl; delete cap.captureRef; }
+      }
+    }
+  }
   const filename = proc.name
-    .replace(/[\\/:*?"<>|]/g, '_')   // remove invalid filename chars
+    .replace(/[\\/:*?"<>|]/g, '_')
     .replace(/\s+/g, '_')
-    .slice(0, 80)                      // max length
-    + '.json';
-  const blob = new Blob([JSON.stringify({ procedures: [proc] }, null, 2)], {type:'application/json'});
+    .slice(0, 80) + '.json';
+  const blob = new Blob([JSON.stringify({ procedures: [exportProc] }, null, 2)], {type:'application/json'});
   download(blob, filename);
 }
 
@@ -3764,26 +3780,28 @@ function onProcFileDrop(event) {
   reader.readAsText(file);
 }
 
-function mergeProcedures(data) {
+async function mergeProcedures(data) {
   const incoming = data.procedures || (Array.isArray(data) ? data : null);
   if (!incoming) { alert('Format invalide — le JSON doit contenir une clé "procedures"'); return; }
   if (!schema.procedures) schema.procedures = [];
   let added = 0, updated = 0;
-  incoming.forEach(p => {
+  for (const p of incoming) {
+    // Migre les captures en base64 vers IndexedDB
+    await _dbMigrateCaptures(p);
     if (!p.id) p.id = 'proc_' + Date.now() + '_' + Math.random().toString(36).slice(2);
     const idx = schema.procedures.findIndex(x => x.id === p.id);
     if (idx === -1) { schema.procedures.push(p); added++; }
     else { schema.procedures[idx] = p; updated++; }
-  });
+  }
   saveToStorage();
   renderProcList();
   alert(`Import OK : ${added} ajoutée(s), ${updated} mise(s) à jour.`);
 }
 
-function confirmImportProcs() {
+async function confirmImportProcs() {
   const txt = document.getElementById('import-procs-text').value.trim();
   if (!txt) { alert('Aucune donnée à importer.'); return; }
-  try { mergeProcedures(JSON.parse(txt)); closeModal('modal-import-procs'); }
+  try { await mergeProcedures(JSON.parse(txt)); closeModal('modal-import-procs'); }
   catch(e) { alert('JSON invalide : ' + e.message); }
 }
 
@@ -4305,6 +4323,96 @@ async function _fetchWithTimeout(url, options, timeoutMs) {
   }
 }
 
+// ─── INDEXEDDB — stockage local des captures (évite la limite localStorage) ──
+const _IDB_NAME    = 'ProjetMX_captures';
+const _IDB_VERSION = 1;
+const _IDB_STORE   = 'images';
+
+function _dbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(_IDB_NAME, _IDB_VERSION);
+    req.onupgradeneeded = e => e.target.result.createObjectStore(_IDB_STORE);
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+function _dataUrlToBlob(dataUrl) {
+  const [header, data] = dataUrl.split(',');
+  const mime = header.match(/:(.*?);/)[1];
+  const bytes = atob(data);
+  const u8 = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) u8[i] = bytes.charCodeAt(i);
+  return new Blob([u8], { type: mime });
+}
+async function _dbSaveCapture(dataUrl) {
+  const key = 'cap_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  const db  = await _dbOpen();
+  return new Promise((resolve, reject) => {
+    const tx  = db.transaction(_IDB_STORE, 'readwrite');
+    const req = tx.objectStore(_IDB_STORE).put(_dataUrlToBlob(dataUrl), key);
+    req.onsuccess = () => resolve(key);
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+async function _dbLoadCaptureUrl(key) {
+  if (!key) return null;
+  const db = await _dbOpen();
+  return new Promise(resolve => {
+    const req = db.transaction(_IDB_STORE, 'readonly').objectStore(_IDB_STORE).get(key);
+    req.onsuccess = e => resolve(e.target.result ? URL.createObjectURL(e.target.result) : null);
+    req.onerror   = () => resolve(null);
+  });
+}
+async function _dbGetCaptureDataUrl(key) {
+  if (!key) return null;
+  const db = await _dbOpen();
+  return new Promise(resolve => {
+    const req = db.transaction(_IDB_STORE, 'readonly').objectStore(_IDB_STORE).get(key);
+    req.onsuccess = e => {
+      const blob = e.target.result;
+      if (!blob) { resolve(null); return; }
+      const r = new FileReader();
+      r.onload = ev => resolve(ev.target.result);
+      r.readAsDataURL(blob);
+    };
+    req.onerror = () => resolve(null);
+  });
+}
+async function _dbDeleteCapture(key) {
+  if (!key) return;
+  const db = await _dbOpen();
+  return new Promise(resolve => {
+    const tx = db.transaction(_IDB_STORE, 'readwrite');
+    tx.objectStore(_IDB_STORE).delete(key);
+    tx.oncomplete = resolve;
+    tx.onerror    = resolve;
+  });
+}
+async function _dbDeleteProcCaptures(proc) {
+  if (!proc.captures) return;
+  for (const cap of proc.captures)
+    if (cap.captureRef) await _dbDeleteCapture(cap.captureRef);
+}
+// Migration : déplace les imageData en base64 vers IDB
+async function _dbMigrateCaptures(proc) {
+  if (!proc.captures) return;
+  for (const cap of proc.captures) {
+    if (cap.imageData && !cap.captureRef) {
+      try {
+        cap.captureRef = await _dbSaveCapture(cap.imageData);
+        delete cap.imageData;
+      } catch(e) { console.warn('IDB migration failed', e); }
+    }
+  }
+}
+// Charge les images IDB dans les <img data-capture-ref> d'un conteneur
+async function _loadCaptureImages(container) {
+  for (const img of container.querySelectorAll('img[data-capture-ref]')) {
+    const url = await _dbLoadCaptureUrl(img.dataset.captureRef);
+    if (url) img.src = url;
+  }
+}
+
 // ─── CAPTURE D'ÉCRAN ────────────────────────────────────────────────────────
 let _captureStream  = null;   // MediaStream actif
 let _captureVideo   = null;   // <video> pour lire le flux
@@ -4442,15 +4550,17 @@ function stopScreenCapture(discard = false) {
   }
 }
 
-function captureToNewProc() {
+async function captureToNewProc() {
   if (!_captureShots.length) return;
+  // Sauvegarde dans IndexedDB (Blob sur disque, pas de base64 en mémoire)
+  const refs = await Promise.all(_captureShots.map(s => _dbSaveCapture(s.dataUrl)));
   _procDraftCaptures = _captureShots.map((s, i) => ({
     desc: `Capture ${i+1}`,
-    imageData: s.dataUrl
+    captureRef: refs[i],
+    imageData: s.dataUrl  // conservé en mémoire uniquement pour le preview du modal
   }));
   stopScreenCapture(false);
   openAddProcModal();
-  // Affiche les captures dans le modal
   setTimeout(_showProcDraftCaptures, 80);
 }
 
@@ -4650,24 +4760,28 @@ async function analyzeWithClaude() {
   }
 }
 
-function importClaudeResult() {
+async function importClaudeResult() {
   const txt = document.getElementById('claude-result-text').value.trim();
   if (!txt) return;
   try {
     const parsed = JSON.parse(txt);
-    // Résout les références de captures (_capRef → imageData)
+    // Résout les _capRef → IDB (crops de captures bbox)
     if (parsed.procedures) {
-      parsed.procedures.forEach(proc => {
-        if (!proc.captures) return;
-        proc.captures.forEach(cap => {
+      for (const proc of parsed.procedures) {
+        if (!proc.captures) continue;
+        for (const cap of proc.captures) {
           if (cap._capRef && _pendingCaptures[cap._capRef]) {
-            cap.imageData = _pendingCaptures[cap._capRef];
+            try {
+              cap.captureRef = await _dbSaveCapture(_pendingCaptures[cap._capRef]);
+            } catch(e) {
+              cap.imageData = _pendingCaptures[cap._capRef]; // fallback
+            }
             delete cap._capRef;
           }
-        });
-      });
+        }
+      }
     }
-    mergeProcedures(parsed);
+    await mergeProcedures(parsed);
     closeModal('modal-claude-ai');
   } catch(e) {
     alert('JSON invalide : ' + e.message);
