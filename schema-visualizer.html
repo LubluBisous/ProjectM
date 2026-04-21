@@ -2879,8 +2879,28 @@ function closeContextMenu() {
 }
 
 // ─── EXPORT / IMPORT ──────────────────────────────────────────────────────────
-function exportJSON() {
-  const blob = new Blob([JSON.stringify(schema, null, 2)], { type: 'application/json' });
+
+// Retourne une copie d'un tableau de procédures avec imageData embarquées depuis IDB
+async function _embedCapturesForExport(procedures) {
+  const result = JSON.parse(JSON.stringify(procedures));
+  for (const proc of result) {
+    if (!proc.captures) continue;
+    for (const cap of proc.captures) {
+      if (cap.captureRef && !cap.imageData) {
+        const dataUrl = await _dbGetCaptureDataUrl(cap.captureRef);
+        if (dataUrl) { cap.imageData = dataUrl; delete cap.captureRef; }
+      }
+    }
+  }
+  return result;
+}
+
+async function exportJSON() {
+  const exportSchema = JSON.parse(JSON.stringify(schema));
+  if (exportSchema.procedures) {
+    exportSchema.procedures = await _embedCapturesForExport(exportSchema.procedures);
+  }
+  const blob = new Blob([JSON.stringify(exportSchema, null, 2)], { type: 'application/json' });
   download(blob, 'schema.json');
 }
 
@@ -3720,16 +3740,20 @@ function exportProcsJSON() {
       const matchFlag = !flagFilter || (p.flags||[]).includes(flagFilter);
       return matchText && matchType && matchFlag;
     });
-    const blob = new Blob([JSON.stringify({ procedures: filtered }, null, 2)], {type:'application/json'});
-    download(blob, `procedures_filtre_${filtered.length}.json`);
-    showToast(`${filtered.length} procédure${filtered.length>1?'s':''} exportée${filtered.length>1?'s':''} (filtre actif)`);
+    _embedCapturesForExport(filtered).then(embedded => {
+      const blob = new Blob([JSON.stringify({ procedures: embedded }, null, 2)], {type:'application/json'});
+      download(blob, `procedures_filtre_${embedded.length}.json`);
+      showToast(`${embedded.length} procédure${embedded.length>1?'s':''} exportée${embedded.length>1?'s':''} (filtre actif)`);
+    });
     return;
   }
   // 3. Sinon → exporte toutes les procédures
   const all = schema.procedures || [];
-  const blob = new Blob([JSON.stringify({ procedures: all }, null, 2)], {type:'application/json'});
-  download(blob, 'procedures.json');
-  showToast(`${all.length} procédure${all.length>1?'s':''} exportée${all.length>1?'s':''}`);
+  _embedCapturesForExport(all).then(embedded => {
+    const blob = new Blob([JSON.stringify({ procedures: embedded }, null, 2)], {type:'application/json'});
+    download(blob, 'procedures.json');
+    showToast(`${embedded.length} procédure${embedded.length>1?'s':''} exportée${embedded.length>1?'s':''}`);
+  });
 }
 
 async function exportSingleProcJSON(id) {
