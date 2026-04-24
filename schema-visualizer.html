@@ -1375,6 +1375,28 @@
   body.light .rel-card-fields { color:#9098b8; }
   body.light .rel-type-badge { background:#e8ecf8; color:#4a5568; }
   body.light .table-tag { background:#f0f4ff; border-color:#c8d0ea; }
+  /* ── Ask Claude Panel ── */
+  #ask-panel { display: none; flex: 1; flex-direction: column; overflow: hidden; background: #0d0f1a; }
+  #ask-panel.active { display: flex; }
+  #ask-ctx-bar { padding: 5px 14px; background: #13162b; border-bottom: 1px solid #1a1d2e; font-size: 11px; color: #4a5568; display: flex; align-items: center; gap: 10px; }
+  #ask-ctx-info { flex: 1; }
+  #ask-clear-btn { background: none; border: 1px solid #2d3150; color: #718096; font-size: 11px; padding: 2px 8px; border-radius: 5px; cursor: pointer; white-space: nowrap; }
+  #ask-clear-btn:hover { color: #e2e8f0; border-color: #4a5568; }
+  #ask-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  #ask-messages::-webkit-scrollbar { width: 4px; }
+  #ask-messages::-webkit-scrollbar-thumb { background: #2d3150; border-radius: 2px; }
+  .ask-msg { max-width: 80%; padding: 10px 14px; border-radius: 12px; font-size: 13px; line-height: 1.6; word-break: break-word; }
+  .ask-msg.user { align-self: flex-end; background: #3d4470; color: #e2e8f0; border-radius: 12px 12px 3px 12px; white-space: pre-wrap; }
+  .ask-msg.assistant { align-self: flex-start; background: #1a1d2e; border: 1px solid #2d3150; color: #e2e8f0; border-radius: 12px 12px 12px 3px; }
+  .ask-msg.info { align-self: center; background: transparent; color: #4a5568; font-size: 11px; text-align: center; padding: 4px 0; max-width: 100%; }
+  .ask-msg-ctx { font-size: 10px; color: #4a5568; margin-top: 6px; padding-top: 6px; border-top: 1px solid #2d3150; }
+  #ask-input-row { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid #1a1d2e; background: #13162b; align-items: flex-end; }
+  #ask-input { flex: 1; background: #1a1d2e; border: 1px solid #2d3150; border-radius: 8px; color: #e2e8f0; font-size: 13px; padding: 8px 12px; outline: none; resize: none; min-height: 38px; max-height: 120px; font-family: inherit; line-height: 1.5; overflow-y: auto; box-sizing: border-box; }
+  #ask-input:focus { border-color: #7c8cf8; }
+  #ask-send-btn { padding: 0 18px; border-radius: 8px; border: none; background: #7c8cf8; color: #fff; font-size: 13px; cursor: pointer; flex-shrink: 0; height: 38px; transition: background .15s; }
+  #ask-send-btn:hover:not(:disabled) { background: #6c7ce8; }
+  #ask-send-btn:disabled { background: #2d3150; color: #4a5568; cursor: default; }
+
   /* code */
   body.light .code-block { background:#f5f7ff; border-color:#c8d0ea; color:#1a1d2e; }
   body.light .sql-kw   { color:#3b5bd9; }
@@ -1390,6 +1412,16 @@
   body.light .md-table tbody tr:nth-child(odd)  { background:#ffffff; }
   body.light .md-table tbody tr:nth-child(even) { background:#f5f7ff; }
   body.light .md-table tbody tr:hover { background:#eef1ff; }
+  body.light #ask-panel { background: #f0f4ff; }
+  body.light #ask-ctx-bar { background: #e8ecf8; border-bottom-color: #c8d0ea; }
+  body.light #ask-clear-btn { border-color: #c8d0ea; color: #718096; }
+  body.light #ask-clear-btn:hover { color: #1a1d2e; border-color: #9098b8; }
+  body.light .ask-msg.user { background: #7c8cf8; color: #fff; }
+  body.light .ask-msg.assistant { background: #fff; border-color: #c8d0ea; color: #1a1d2e; }
+  body.light .ask-msg.info { color: #9098b8; }
+  body.light .ask-msg-ctx { color: #9098b8; border-top-color: #c8d0ea; }
+  body.light #ask-input-row { background: #e8ecf8; border-top-color: #c8d0ea; }
+  body.light #ask-input { background: #f8faff; border-color: #c8d0ea; color: #1a1d2e; }
   /* flags */
   body.light #flags-chips { background:#f0f4ff; border-color:#c8d0ea; }
   body.light #flag-new-input { background:#f0f4ff; border-color:#c8d0ea; color:#1a1d2e; }
@@ -1440,6 +1472,7 @@
       <button class="btn btn-secondary" id="toolbar-more-btn" onclick="toggleToolbarMenu(event)" title="Plus d'options">⋯</button>
       <div id="toolbar-dropdown">
         <div class="tbdrop-item" onclick="openClaudeAIModal();closeToolbarMenu()">🤖 Claude IA</div>
+        <div class="tbdrop-item" onclick="switchTab('ask');closeToolbarMenu()">✦ Ask Claude</div>
         <div class="tbdrop-item" onclick="openPromptModal();closeToolbarMenu()">📋 Prompt</div>
         <div class="tbdrop-sep"></div>
         <div class="tbdrop-item" id="tbdrop-json-btn" onclick="exportProcsJSON();closeToolbarMenu()">⬇ Exporter JSON</div>
@@ -1453,6 +1486,11 @@
     </div>
   </div>
 
+  <!-- Ask Claude (toolbar minimal) -->
+  <div id="toolbar-ask" style="display:none;align-items:center;gap:8px;">
+    <span style="font-size:12px;color:#4a5568;">✦ Ask Claude — posez vos questions sur vos procédures</span>
+  </div>
+
   <span id="zoom-info" style="display:none;">Zoom: 100% | Tables: 0</span>
   <div id="theme-switch" onclick="toggleLightMode()" title="Mode clair / sombre" style="margin-left:auto;">
     <div id="theme-switch-track"><div id="theme-switch-thumb"></div></div>
@@ -1463,6 +1501,7 @@
 <div id="tab-bar">
   <button class="tab-btn active" id="tab-schema" onclick="switchTab('schema')">▦ Schéma</button>
   <button class="tab-btn" id="tab-proc" onclick="switchTab('proc')">⚙ Procédures</button>
+  <button class="tab-btn" id="tab-ask" onclick="switchTab('ask')">✦ Ask Claude</button>
 </div>
 
 <!-- SCHEMA PANEL -->
@@ -1537,6 +1576,20 @@
       </div>
       <div id="proc-view-body"><!-- filled by JS --></div>
     </div>
+  </div>
+</div>
+
+<!-- ASK CLAUDE PANEL -->
+<div id="ask-panel">
+  <div id="ask-ctx-bar">
+    <span id="ask-ctx-info">0 procédures indexées</span>
+    <button id="ask-clear-btn" onclick="clearAskHistory()" title="Vider l'historique de conversation">↺ Vider</button>
+  </div>
+  <div id="ask-messages"></div>
+  <div id="ask-input-row">
+    <textarea id="ask-input" placeholder="Posez une question sur vos procédures et requêtes SQL… (Entrée pour envoyer, Maj+Entrée pour sauter une ligne)"
+              onkeydown="askKeyDown(event)" oninput="askAutoResize(this)" rows="1"></textarea>
+    <button id="ask-send-btn" onclick="sendAskMessage()">Envoyer</button>
   </div>
 </div>
 
@@ -3257,11 +3310,14 @@ function switchTab(tab) {
   currentTab = tab;
   document.getElementById('schema-panel').style.display = tab === 'schema' ? 'flex' : 'none';
   document.getElementById('proc-panel').classList.toggle('active', tab === 'proc');
+  document.getElementById('ask-panel').classList.toggle('active', tab === 'ask');
   document.getElementById('toolbar-schema').style.display = tab === 'schema' ? 'flex' : 'none';
   document.getElementById('toolbar-proc').style.display   = tab === 'proc'   ? 'flex' : 'none';
+  document.getElementById('toolbar-ask').style.display    = tab === 'ask'    ? 'flex' : 'none';
   document.getElementById('zoom-info').style.display = tab === 'schema' ? 'inline' : 'none';
   if (tab === 'schema') renderSchemaList();
-  else renderProcList(document.getElementById('proc-search').value);
+  else if (tab === 'proc') renderProcList(document.getElementById('proc-search').value);
+  else if (tab === 'ask') renderAskMessages();
 }
 
 // ─── TOOLBAR DROPDOWN ──────────────────────────────────────────────────────
@@ -5229,6 +5285,178 @@ async function importClaudeResult() {
   } catch(e) {
     alert('JSON invalide : ' + e.message);
   }
+}
+
+// ─── ASK CLAUDE ────────────────────────────────────────────────────────────
+let _askHistory  = [];    // [{role, content, _display?, _ctxNames?}]
+let _askBusy     = false;
+
+function _askManifest() {
+  const procs = schema.procedures || [];
+  if (!procs.length) return '(aucune procédure chargée)';
+  return procs.map(p =>
+    `[${p.type || 'PROC'}] ${p.name}${p.description ? ' — ' + p.description.slice(0, 100) : ''}`
+  ).join('\n');
+}
+
+function _askRankProcs(question) {
+  const words = (question.toLowerCase().match(/\b\w{3,}\b/g) || []);
+  if (!words.length) return [];
+  return (schema.procedures || [])
+    .map(proc => {
+      const hay = [proc.name, proc.description, proc.body,
+                   ...(proc.tables || []), ...(proc.flags || [])].join(' ').toLowerCase();
+      const score = words.reduce((s, w) => s + (hay.split(w).length - 1), 0);
+      return { proc, score };
+    })
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4)
+    .map(x => x.proc);
+}
+
+function _askFormatProc(proc) {
+  const lines = [`=== ${proc.name} [${proc.type || 'PROCEDURE'}] ===`];
+  if (proc.description) lines.push('Description : ' + proc.description);
+  if (proc.parameters?.length)
+    lines.push('Paramètres : ' + proc.parameters.map(p => `${p.name} ${p.type} (${p.mode})`).join(', '));
+  if (proc.tables?.length) lines.push('Tables : ' + proc.tables.join(', '));
+  if (proc.body) {
+    const b = proc.body.replace(/\[CAPTURE:\d+\]/g, '[image]');
+    lines.push('Corps :\n' + (b.length > 3000 ? b.slice(0, 3000) + '\n…(tronqué)' : b));
+  }
+  return lines.join('\n');
+}
+
+function _askMdToHtml(text) {
+  return text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`([^`\n]+)`/g, '<code style="background:#0d0f1a;padding:1px 5px;border-radius:3px;font-family:monospace;font-size:12px">$1</code>')
+    .replace(/^#{1,3} (.+)$/gm, '<strong style="font-size:14px">$1</strong>')
+    .replace(/\n/g, '<br>');
+}
+
+function renderAskMessages() {
+  const box = document.getElementById('ask-messages');
+  if (!box) return;
+  const n = (schema.procedures || []).length;
+  const info = document.getElementById('ask-ctx-info');
+  if (info) {
+    const turns = _askHistory.filter(m => m.role === 'user').length;
+    info.textContent = `${n} procédure${n !== 1 ? 's' : ''} indexée${n !== 1 ? 's' : ''}` +
+      (turns ? ` · ${turns} question${turns !== 1 ? 's' : ''}` : ' · posez vos questions ci-dessous');
+  }
+  if (!_askHistory.length) {
+    box.innerHTML = `<div class="ask-msg info">${n} procédure${n !== 1 ? 's' : ''} indexée${n !== 1 ? 's' : ''}${n ? ' — posez vos questions ci-dessous' : ' — importez d\'abord des procédures'}</div>`;
+    return;
+  }
+  box.innerHTML = _askHistory.map(m => {
+    if (m._thinking) return `<div class="ask-msg info" style="color:#7c8cf8;">⏳ Claude réfléchit…</div>`;
+    if (m.role === 'user') {
+      return `<div class="ask-msg user">${escHtml(m._display || m.content)}</div>`;
+    }
+    const html = _askMdToHtml(m.content);
+    const ctx  = m._ctxNames?.length
+      ? `<div class="ask-msg-ctx">Contexte utilisé : ${escHtml(m._ctxNames.join(', '))}</div>`
+      : '';
+    return `<div class="ask-msg assistant">${html}${ctx}</div>`;
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+async function sendAskMessage() {
+  const input = document.getElementById('ask-input');
+  const question = input.value.trim();
+  if (!question || _askBusy) return;
+  const apiKey = getApiKey();
+  if (!apiKey) { openSettingsModal(); return; }
+
+  input.value = '';
+  input.style.height = '';
+  _askBusy = true;
+  const btn = document.getElementById('ask-send-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+
+  // Trouver procédures pertinentes par recherche locale (gratuit, sans tokens)
+  const relevant = _askRankProcs(question);
+
+  // Contenu réel envoyé à l'API (inclut le contexte des procédures)
+  let apiContent = question;
+  if (relevant.length) {
+    apiContent = `[Procédures pertinentes]\n${relevant.map(_askFormatProc).join('\n\n')}\n\n[Question]\n${question}`;
+  }
+
+  _askHistory.push({ role: 'user', content: apiContent, _display: question });
+  _askHistory.push({ role: 'assistant', content: '', _thinking: true });
+  renderAskMessages();
+
+  // System prompt avec manifest complet + cache_control (économise ~90% sur les appels suivants)
+  const systemText = `Tu es un assistant expert sur une base de procédures et requêtes SQL MX3 (Murex Trading System).
+
+INDEX COMPLET (${(schema.procedures || []).length} procédures) :
+${_askManifest()}
+
+Réponds en français. Sois précis et concis. Si une procédure mentionnée n'est pas dans le contexte fourni, dis-le.`;
+
+  // Historique envoyé : exclure le message "thinking", limiter à 10 messages (5 tours)
+  const messages = _askHistory
+    .filter(m => !m._thinking)
+    .map(({ role, content }) => ({ role, content }));
+  const trimmed = messages.length > 10 ? messages.slice(-10) : messages;
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'anthropic-beta': 'prompt-caching-2024-07-31'
+      },
+      body: JSON.stringify({
+        model: getModel(),
+        max_tokens: 1500,
+        system: [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }],
+        messages: trimmed
+      })
+    });
+
+    // Retirer le message thinking
+    _askHistory.pop();
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error?.message || `HTTP ${resp.status}`);
+    }
+    const data   = await resp.json();
+    const answer = data.content?.[0]?.text || '(réponse vide)';
+    _askHistory.push({ role: 'assistant', content: answer, _ctxNames: relevant.map(p => p.name) });
+
+  } catch(e) {
+    // Retirer le thinking si encore présent
+    if (_askHistory.at(-1)?._thinking) _askHistory.pop();
+    _askHistory.push({ role: 'assistant', content: `❌ Erreur : ${e.message}`, _ctxNames: null });
+  }
+
+  _askBusy = false;
+  if (btn) { btn.disabled = false; btn.textContent = 'Envoyer'; }
+  renderAskMessages();
+}
+
+function clearAskHistory() {
+  _askHistory = [];
+  renderAskMessages();
+}
+
+function askKeyDown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAskMessage(); }
+}
+
+function askAutoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
 }
 
 // ─── TOAST ─────────────────────────────────────────────────────────────────
