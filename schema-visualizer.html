@@ -5356,12 +5356,13 @@ async function warmAskCache() {
 
   const currentManifest = _askManifest();
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    const resp = await _fetchWithTimeout('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
-        'content-type': 'application/json'
+        'content-type': 'application/json',
+        'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
         model: getModel(),
@@ -5369,7 +5370,7 @@ async function warmAskCache() {
         system: _buildAskSystemText(),
         messages: [{ role: 'user', content: 'ok' }]
       })
-    });
+    }, 30_000);
     if (!resp.ok) { const e = await resp.json().catch(()=>({})); throw new Error(e.error?.message || `HTTP ${resp.status}`); }
     _askCacheWarmedAt = Date.now();
     _askCacheManifest = currentManifest;
@@ -5484,12 +5485,13 @@ async function sendAskMessage() {
   const trimmed = messages.length > 10 ? messages.slice(-10) : messages;
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    const resp = await _fetchWithTimeout('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
-        'content-type': 'application/json'
+        'content-type': 'application/json',
+        'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
         model: getModel(),
@@ -5497,7 +5499,7 @@ async function sendAskMessage() {
         system: _buildAskSystemText(),
         messages: trimmed
       })
-    });
+    }, 60_000);
 
     // Retirer le message thinking
     _askHistory.pop();
