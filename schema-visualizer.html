@@ -5108,8 +5108,9 @@ async function importClaudeResult() {
         }
       }
     }
-    await mergeProcedures(parsed);
+    const firstId = await mergeProcedures(parsed);
     closeModal('modal-claude-ai');
+    if (firstId) showProcDetail(firstId);
   } catch(e) {
     alert('JSON invalide : ' + e.message);
   }
