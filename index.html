@@ -2127,12 +2127,17 @@ document.addEventListener('DOMContentLoaded', () => {
       if (_captureStream) hideCapturePanelOnly(); // cache le panel sans arrêter la capture
     }
     if (e.key === 'Delete' && selectedTable && currentTab === 'schema') deleteTable(selectedTable);
-    // Touche 0 → prendre un screenshot si la capture est active et aucun champ saisi ciblé
-    if (e.key === '0' && _captureStream) {
+    // Touche 0 : capture active → screenshot ; sinon → pipeline rapide capture+Claude
+    if (e.key === '0') {
       const tag = document.activeElement?.tagName;
       if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
         e.preventDefault();
-        takeScreenshot();
+        if (_captureStream) {
+          takeScreenshot();
+        } else {
+          const anyModal = document.querySelector('.modal-overlay.active');
+          if (!anyModal) quickCaptureAnalyze();
+        }
       }
     }
   });
@@ -4738,6 +4743,53 @@ async function _loadCaptureImages(container) {
   }
 }
 
+// ─── PIPELINE RAPIDE : touche 0 sans stream actif ──────────────────────────
+let _autoImportAfterAnalysis = false;
+
+async function quickCaptureAnalyze() {
+  // 1. Vider les captures précédentes et démarrer le stream
+  _captureShots = [];
+  await startScreenCapture();
+  if (!_captureStream) return; // utilisateur a annulé
+
+  // 2. Attendre que la vidéo ait un frame réel (videoWidth > 0)
+  await new Promise(resolve => {
+    const check = () => (_captureVideo && _captureVideo.videoWidth > 0) ? resolve() : setTimeout(check, 50);
+    check();
+  });
+
+  // 3. Courte pause pour laisser le sélecteur de l'OS disparaître de l'écran capturé
+  await new Promise(r => setTimeout(r, 400));
+
+  // 4. Prendre le screenshot
+  takeScreenshot();
+
+  // 5. Arrêter le stream (garder les captures)
+  stopScreenCapture(false);
+
+  // 6. Ouvrir Claude AI et injecter le screenshot
+  openClaudeAIModal(); // réinitialise _claudePhotos — on réinjecte dans le timeout
+  setTimeout(() => {
+    _claudePhotos = _captureShots.map(s => ({ ...s, origDataUrl: s.dataUrl }));
+    _captureShots = [];
+
+    // 7. Forcer le mode "Procédure en texte", compression activée, pas d'optimisation
+    onPromptModeChange('text', null);
+    const hqToggle  = document.getElementById('claude-hq-toggle');
+    const optToggle = document.getElementById('claude-opt-toggle');
+    if (hqToggle  && hqToggle.checked)  { hqToggle.checked  = false; onHQToggleChange(hqToggle); }
+    if (optToggle && optToggle.checked) { optToggle.checked = false; onOptToggleChange(optToggle); }
+
+    renderClaudeThumbs();
+    document.getElementById('claude-status').textContent =
+      `📷 ${_claudePhotos.length} capture chargée — analyse automatique en cours…`;
+
+    // 8. Lancer l'analyse et activer l'import automatique
+    _autoImportAfterAnalysis = true;
+    analyzeWithClaude();
+  }, 150);
+}
+
 // ─── CAPTURE D'ÉCRAN ────────────────────────────────────────────────────────
 let _captureStream  = null;   // MediaStream actif
 let _captureVideo   = null;   // <video> pour lire le flux
@@ -5066,6 +5118,12 @@ async function analyzeWithClaude() {
       status.textContent = '✅ Analyse terminée' + suffix + ' — vérifiez le JSON puis cliquez sur Importer';
       analyzeBtn.textContent = '🔄 Relancer';
       analyzeBtn.disabled = false;
+      // Mode pipeline rapide (touche 0) → import automatique
+      if (_autoImportAfterAnalysis) {
+        _autoImportAfterAnalysis = false;
+        status.textContent = '✅ Analyse terminée — import automatique…';
+        setTimeout(() => importClaudeResult(), 600);
+      }
       return;
 
     } catch(err) {
