@@ -5360,13 +5360,12 @@ async function warmAskCache() {
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-        'anthropic-beta': 'prompt-caching-2024-07-31'
+        'content-type': 'application/json'
       },
       body: JSON.stringify({
         model: getModel(),
-        max_tokens: 1,   // réponse minimale — on veut juste créer le cache
-        system: [{ type: 'text', text: _buildAskSystemText(), cache_control: { type: 'ephemeral' } }],
+        max_tokens: 1,
+        system: _buildAskSystemText(),
         messages: [{ role: 'user', content: 'ok' }]
       })
     });
@@ -5489,13 +5488,12 @@ async function sendAskMessage() {
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-        'anthropic-beta': 'prompt-caching-2024-07-31'
+        'content-type': 'application/json'
       },
       body: JSON.stringify({
         model: getModel(),
         max_tokens: 1500,
-        system: [{ type: 'text', text: _buildAskSystemText(), cache_control: { type: 'ephemeral' } }],
+        system: _buildAskSystemText(),
         messages: trimmed
       })
     });
