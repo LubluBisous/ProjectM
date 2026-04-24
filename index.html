@@ -5187,7 +5187,7 @@ async function _extractCaptureImages(procedures) {
 }
 
 // ─── ANALYSE PAR LOTS (> MAX_PHOTOS_PER_BATCH images) ──────────────────────
-const MAX_PHOTOS_PER_BATCH = 8;
+const MAX_PHOTOS_PER_BATCH = 6;
 
 async function _analyzeWithClaudeBatched() {
   const apiKey  = getApiKey();
@@ -5202,7 +5202,7 @@ async function _analyzeWithClaudeBatched() {
     batches.push(_claudePhotos.slice(i, i + MAX_PHOTOS_PER_BATCH));
   const nb = batches.length;
 
-  const TIMEOUT_MS   = 90_000;
+  const TIMEOUT_MS   = 180_000;
   const MAX_RETRIES  = 2;
   const RETRY_DELAYS = [8, 20];
 
@@ -5339,7 +5339,7 @@ async function analyzeWithClaude() {
 
   const MAX_RETRIES = 2;           // 2 retentatives max (3 essais au total)
   const RETRY_DELAYS = [8, 20];    // délais en secondes entre chaque essai
-  const TIMEOUT_MS   = 90_000;     // 90s max par tentative
+  const TIMEOUT_MS   = 180_000;    // 180s max par tentative
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
