@@ -4689,6 +4689,43 @@ function _setModeBtn(btn, active) {
 
 // ── Helpers pour analyzeWithClaude ──────────────────────────────────────────
 
+// Extrait le JSON d'une réponse Claude (gère les fences, le texte autour, la troncature)
+function _extractJsonFromText(text) {
+  // 1. Essai direct
+  try { JSON.parse(text); return text; } catch(_) {}
+  // 2. Fence ```json ... ```
+  const fence = text.match(/```(?:json)?\s*([\s\S]+?)\s*```/);
+  if (fence) { try { JSON.parse(fence[1]); return fence[1].trim(); } catch(_) {} }
+  // 3. Premier { jusqu'au dernier } (réponse avec texte autour ou JSON tronqué)
+  const start = text.indexOf('{');
+  const end   = text.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    const candidate = text.slice(start, end + 1);
+    try { JSON.parse(candidate); return candidate; } catch(_) {}
+    // 4. JSON tronqué : tenter de fermer les accolades/crochets ouverts
+    try { return _repairTruncatedJson(candidate); } catch(_) {}
+  }
+  return text; // renvoyer tel quel, l'erreur sera explicite à l'import
+}
+
+function _repairTruncatedJson(text) {
+  // Compte les accolades et crochets non fermés et les ajoute
+  let depth = 0, inStr = false, escape = false;
+  const stack = [];
+  for (const ch of text) {
+    if (escape) { escape = false; continue; }
+    if (ch === '\\' && inStr) { escape = true; continue; }
+    if (ch === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (ch === '{') stack.push('}');
+    else if (ch === '[') stack.push(']');
+    else if (ch === '}' || ch === ']') stack.pop();
+  }
+  const repaired = text + stack.reverse().join('');
+  JSON.parse(repaired); // valide — lève si toujours invalide
+  return repaired;
+}
+
 // Classifie une erreur et retourne { retryable, userMsg }
 function _claudeErrorInfo(err, httpStatus) {
   const msg = (err?.message || '').toLowerCase();
@@ -5180,7 +5217,7 @@ async function _analyzeWithClaudeBatched() {
             'anthropic-version': '2023-06-01',
             'anthropic-dangerous-direct-browser-access': 'true'
           },
-          body: JSON.stringify({ model, max_tokens: 4096, messages: [{ role: 'user', content: messageContent }] })
+          body: JSON.stringify({ model, max_tokens: 8192, messages: [{ role: 'user', content: messageContent }] })
         }, TIMEOUT_MS);
 
         if (!resp.ok) {
@@ -5195,9 +5232,8 @@ async function _analyzeWithClaudeBatched() {
           throw new Error(info.finalMsg);
         }
         const data = await resp.json();
-        let text = (data.content?.[0]?.text || '').trim();
-        const fence = text.match(/```(?:json)?\s*([\s\S]+?)\s*```/);
-        return fence ? fence[1].trim() : text;
+        const raw  = (data.content?.[0]?.text || '').trim();
+        return _extractJsonFromText(raw);
 
       } catch(err) {
         const info = _claudeErrorInfo(err, null);
@@ -5315,7 +5351,7 @@ async function analyzeWithClaude() {
           'anthropic-version': '2023-06-01',
           'anthropic-dangerous-direct-browser-access': 'true'
         },
-        body: JSON.stringify({ model, max_tokens: 4096, messages: [{ role: 'user', content: messageContent }] })
+        body: JSON.stringify({ model, max_tokens: 8192, messages: [{ role: 'user', content: messageContent }] })
       }, TIMEOUT_MS);
 
       if (!resp.ok) {
@@ -5341,9 +5377,7 @@ async function analyzeWithClaude() {
 
       // Succès
       const data = await resp.json();
-      let text = (data.content?.[0]?.text || '').trim();
-      const fence = text.match(/```(?:json)?\s*([\s\S]+?)\s*```/);
-      if (fence) text = fence[1].trim();
+      let text = _extractJsonFromText((data.content?.[0]?.text || '').trim());
 
       // Post-traitement : crop des captures d'écran imbriquées
       try {
