@@ -536,17 +536,26 @@
     cursor: pointer;
   }
   .sidebar-filter-sel:focus { border-color: #7c8cf8; }
+  #proc-search-wrap { flex: 1; position: relative; display: flex; align-items: center; }
   #proc-search {
-    flex: 1;
+    width: 100%;
     background: #1a1d2e;
     border: 1px solid #2d3150;
     border-radius: 6px;
-    padding: 6px 10px;
+    padding: 6px 28px 6px 10px;
     color: #e2e8f0;
     font-size: 12px;
     outline: none;
+    box-sizing: border-box;
   }
   #proc-search:focus { border-color: #7c8cf8; }
+  #proc-search-clear {
+    display: none; position: absolute; right: 6px;
+    background: none; border: none; cursor: pointer;
+    color: #718096; font-size: 13px; line-height: 1;
+    padding: 2px 3px; border-radius: 3px;
+  }
+  #proc-search-clear:hover { color: #e2e8f0; background: #2d3150; }
   #proc-list { flex: 1; overflow-y: auto; padding: 8px; }
   #proc-list::-webkit-scrollbar { width: 4px; }
   #proc-list::-webkit-scrollbar-track { background: transparent; }
@@ -1193,7 +1202,7 @@
 
     /* Sidebar filters stack already (column) */
     #proc-sidebar-header { padding: 8px 10px; }
-    #proc-search { font-size: 14px; padding: 8px 10px; }
+    #proc-search { font-size: 14px; padding: 8px 28px 8px 10px; }
     .sidebar-filter-sel { font-size: 12px; padding: 7px; }
   }
 
@@ -1493,7 +1502,10 @@
   <!-- Sidebar list -->
   <div id="proc-sidebar">
     <div id="proc-sidebar-header">
-      <input type="text" id="proc-search" placeholder="🔍 Rechercher une procédure..." oninput="filterProcs()" />
+      <div id="proc-search-wrap">
+        <input type="text" id="proc-search" placeholder="🔍 Rechercher une procédure..." oninput="filterProcs()" />
+        <button id="proc-search-clear" onclick="clearProcSearch()" title="Effacer le filtre">✕</button>
+      </div>
       <!-- Filtres cachés — gardés pour compat JS -->
       <select id="proc-filter-type" style="display:none;"></select>
       <select id="proc-filter-flag" style="display:none;"></select>
@@ -3385,8 +3397,18 @@ function renderProcList(filter = '') {
 }
 
 function filterProcs() {
-  renderProcList(document.getElementById('proc-search').value);
+  const val = document.getElementById('proc-search').value;
+  const btn = document.getElementById('proc-search-clear');
+  if (btn) btn.style.display = val ? 'block' : 'none';
+  renderProcList(val);
   updateProcJsonBtnLabel();
+}
+
+function clearProcSearch() {
+  const inp = document.getElementById('proc-search');
+  inp.value = '';
+  inp.focus();
+  filterProcs();
 }
 
 // ─── UPDATE TOOLBAR JSON BUTTON LABEL ─────────────────────────────────────
@@ -4032,6 +4054,7 @@ async function mergeProcedures(data) {
   if (!incoming) { alert('Format invalide — le JSON doit contenir une clé "procedures"'); return; }
   if (!schema.procedures) schema.procedures = [];
   let added = 0, updated = 0;
+  let firstId = null;
   for (const p of incoming) {
     // Migre les captures en base64 vers IndexedDB
     await _dbMigrateCaptures(p);
@@ -4039,16 +4062,22 @@ async function mergeProcedures(data) {
     const idx = schema.procedures.findIndex(x => x.id === p.id);
     if (idx === -1) { schema.procedures.push(p); added++; }
     else { schema.procedures[idx] = p; updated++; }
+    if (!firstId) firstId = p.id;
   }
   saveToStorage();
   renderProcList();
   alert(`Import OK : ${added} ajoutée(s), ${updated} mise(s) à jour.`);
+  return firstId;
 }
 
 async function confirmImportProcs() {
   const txt = document.getElementById('import-procs-text').value.trim();
   if (!txt) { alert('Aucune donnée à importer.'); return; }
-  try { await mergeProcedures(JSON.parse(txt)); closeModal('modal-import-procs'); }
+  try {
+    const firstId = await mergeProcedures(JSON.parse(txt));
+    closeModal('modal-import-procs');
+    if (firstId) showProcDetail(firstId);
+  }
   catch(e) { alert('JSON invalide : ' + e.message); }
 }
 
