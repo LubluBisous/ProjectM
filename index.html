@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>SQL Schema Visualizer</title>
+<title>Vault</title>
 
 <!-- PWA / Add to Home Screen -->
 <meta name="theme-color" content="#0f1117">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="SQL Schema">
-<meta name="application-name" content="SQL Schema">
+<meta name="apple-mobile-web-app-title" content="Vault">
+<meta name="application-name" content="Vault">
 <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22SQL%20Schema%20Visualizer%22%2C%22short_name%22%3A%22SQL%20Schema%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230f1117%22%2C%22theme_color%22%3A%22%230f1117%22%2C%22description%22%3A%22Visualiseur%20de%20sch%C3%A9mas%20SQL%20et%20proc%C3%A9dures%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%2C%253Csvg%2520xmlns%3D%2527http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%2527%2520viewBox%3D%25270%25200%252096%252096%2527%253E%253Crect%2520width%3D%252796%2527%2520height%3D%252796%2527%2520rx%3D%252718%2527%2520fill%3D%25270f1117%2527%2F%253E%253Ctext%2520y%3D%252766%2527%2520x%3D%252716%2527%2520font-size%3D%252756%2527%253E%25E2%259A%25A1%253C%2Ftext%253E%253C%2Fsvg%253E%22%2C%22sizes%22%3A%22any%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1449,7 +1449,7 @@
 
 <!-- TOOLBAR -->
 <div id="toolbar">
-  <h1>⬡ SQL Schema</h1>
+  <h1>⬡ Vault</h1>
 
   <!-- Schéma (caché par défaut, accessible via ⋯) -->
   <div id="toolbar-schema" style="display:none;align-items:center;gap:8px;">
@@ -2230,8 +2230,8 @@ function setupClaudeLogo() {
   const manifestEl = document.querySelector("link[rel='manifest']");
   if (manifestEl) {
     const manifest = {
-      name: 'SQL Schema Visualizer',
-      short_name: 'SQL Schema',
+      name: 'Vault',
+      short_name: 'Vault',
       start_url: '.',
       display: 'standalone',
       background_color: '#0f1117',
