@@ -2107,9 +2107,9 @@ let selectedTable = null;
 let ctxTableId = null;
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   restoreLightMode();
-  loadFromStorage();
+  await loadFromStorage();
   setupClaudeLogo();
   _initRelMenu();
   switchTab('proc'); // procédures par défaut
@@ -2189,21 +2189,42 @@ function setupClaudeLogo() {
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
 function saveToStorage() {
-  localStorage.setItem('sql_schema', JSON.stringify(schema));
+  // Schéma (tables + relations) → localStorage  (taille raisonnable, accès sync)
+  localStorage.setItem('sql_schema', JSON.stringify({
+    tables:    schema.tables    || [],
+    relations: schema.relations || []
+  }));
+  // Procédures → IndexedDB  (pas de limite de taille)
+  _dbSaveProcedures(schema.procedures || [])
+    .catch(e => console.error('IDB save procedures:', e));
 }
-function loadFromStorage() {
+
+async function loadFromStorage() {
   try {
     const s = localStorage.getItem('sql_schema');
     if (s) {
       const parsed = JSON.parse(s);
-      // Ignore stored data if it only contains the old demo tables
-      const demoIds = new Set(['users','orders','products','order_items']);
-      const isOnlyDemo = parsed.tables && parsed.tables.length > 0 &&
-        parsed.tables.every(t => demoIds.has(t.id));
-      if (!isOnlyDemo) schema = parsed;
+      const demoIds   = new Set(['users','orders','products','order_items']);
+      const isOnlyDemo = parsed.tables?.length > 0 && parsed.tables.every(t => demoIds.has(t.id));
+      if (!isOnlyDemo) {
+        schema.tables    = parsed.tables    || [];
+        schema.relations = parsed.relations || [];
+
+        // ── Migration v1 : procédures encore dans localStorage → IDB ──────────
+        if (parsed.procedures?.length > 0) {
+          const existing = await _dbLoadProcedures();
+          if (existing.length === 0) {
+            await _dbSaveProcedures(parsed.procedures);
+          }
+          // Nettoyer localStorage (supprimer la clé procedures)
+          delete parsed.procedures;
+          localStorage.setItem('sql_schema', JSON.stringify(parsed));
+        }
+      }
     }
-    if (!schema.procedures) schema.procedures = [];
   } catch(e) {}
+  // Procédures toujours lues depuis IDB (source de vérité)
+  schema.procedures = await _dbLoadProcedures();
 }
 
 // ─── RENDER ───────────────────────────────────────────────────────────────────
@@ -3094,8 +3115,17 @@ function onFileDrop(e) {
 function confirmImport() {
   try {
     const data = JSON.parse(document.getElementById('import-json-text').value);
-    if (data.tables) { schema = data; if (!schema.procedures) schema.procedures = []; saveToStorage(); closeModal('modal-import'); selectedTable = null; renderSchemaList(); document.getElementById('schema-view').classList.remove('active'); document.getElementById('schema-empty').style.display = ''; }
-    else alert('Format invalide — le JSON doit contenir une clé "tables"');
+    if (data.tables) {
+      // Conserver les procédures déjà en IDB — seul le schéma (tables/relations) est importé ici
+      const procs = data.procedures || schema.procedures || [];
+      schema = { tables: data.tables, relations: data.relations || [], procedures: procs };
+      saveToStorage();
+      closeModal('modal-import');
+      selectedTable = null;
+      renderSchemaList();
+      document.getElementById('schema-view').classList.remove('active');
+      document.getElementById('schema-empty').style.display = '';
+    } else alert('Format invalide — le JSON doit contenir une clé "tables"');
   } catch(e) { alert('JSON invalide : ' + e.message); }
 }
 
@@ -4653,18 +4683,45 @@ async function _fetchWithTimeout(url, options, timeoutMs) {
   }
 }
 
-// ─── INDEXEDDB — stockage local des captures (évite la limite localStorage) ──
-const _IDB_NAME    = 'ProjetMX_captures';
-const _IDB_VERSION = 1;
-const _IDB_STORE   = 'images';
+// ─── INDEXEDDB — stockage local des captures + procédures ───────────────────
+const _IDB_NAME       = 'ProjetMX_captures';
+const _IDB_VERSION    = 2;           // v2 : ajout du store "procedures"
+const _IDB_STORE      = 'images';
+const _IDB_PROC_STORE = 'procedures';
 
 function _dbOpen() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(_IDB_NAME, _IDB_VERSION);
-    req.onupgradeneeded = e => e.target.result.createObjectStore(_IDB_STORE);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(_IDB_STORE))      db.createObjectStore(_IDB_STORE);
+      if (!db.objectStoreNames.contains(_IDB_PROC_STORE)) db.createObjectStore(_IDB_PROC_STORE);
+    };
     req.onsuccess = e => resolve(e.target.result);
     req.onerror   = e => reject(e.target.error);
   });
+}
+
+// ── Procédures dans IDB ──────────────────────────────────────────────────────
+async function _dbSaveProcedures(procedures) {
+  const db = await _dbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(_IDB_PROC_STORE, 'readwrite');
+    tx.objectStore(_IDB_PROC_STORE).put(procedures || [], 'data');
+    tx.oncomplete = resolve;
+    tx.onerror    = e => reject(e.target.error);
+  });
+}
+async function _dbLoadProcedures() {
+  try {
+    const db = await _dbOpen();
+    return new Promise((resolve, reject) => {
+      const req = db.transaction(_IDB_PROC_STORE, 'readonly')
+                    .objectStore(_IDB_PROC_STORE).get('data');
+      req.onsuccess = e => resolve(e.target.result || []);
+      req.onerror   = e => reject(e.target.error);
+    });
+  } catch(e) { return []; }
 }
 function _dataUrlToBlob(dataUrl) {
   const [header, data] = dataUrl.split(',');
