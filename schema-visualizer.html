@@ -453,32 +453,42 @@
   .rel-card.incoming .rel-card-arrow { color: #68d391; }
 
   /* ── TABS ── */
-  #tab-bar {
-    background: #13162b;
-    border-bottom: 1px solid #2d3150;
-    display: flex;
-    align-items: flex-end;
-    padding: 0 16px;
+  #tab-bar { display: none; } /* tab bar cachée — navigation via menu ⋯ */
+  .tab-btn {} /* gardé pour compat JS */
+
+  /* ── TOOLBAR DROPDOWN ── */
+  #toolbar-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    background: #1a1d2e;
+    border: 1px solid #3d4470;
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.6);
+    min-width: 200px;
+    z-index: 3000;
+    padding: 6px;
+    flex-direction: column;
     gap: 2px;
-    flex-shrink: 0;
-    position: relative;
-    z-index: 50;
   }
-  .tab-btn {
-    padding: 8px 20px;
+  #toolbar-dropdown.open { display: flex; }
+  .tbdrop-item {
+    padding: 8px 12px;
     font-size: 12px;
-    font-weight: 600;
-    border: none;
-    background: transparent;
-    color: #4a5568;
+    font-weight: 500;
+    color: #a0aec0;
+    border-radius: 6px;
     cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    transition: all .15s;
-    border-radius: 6px 6px 0 0;
+    transition: background .1s, color .1s;
+    white-space: nowrap;
   }
-  .tab-btn:hover { color: #a0aec0; background: #1a1d2e; }
-  .tab-btn.active { color: #7c8cf8; border-bottom-color: #7c8cf8; background: #1a1d2e; }
+  .tbdrop-item:hover { background: #252840; color: #e2e8f0; }
+  .tbdrop-sep {
+    height: 1px;
+    background: #2d3150;
+    margin: 4px 0;
+  }
 
   /* ── PROCEDURES PANEL ── */
   #proc-panel {
@@ -489,17 +499,22 @@
   }
   #proc-panel.active { display: flex; }
 
+  /* Sidebar pleine largeur par défaut, se réduit quand détail ouvert */
   #proc-sidebar {
-    width: 280px;
-    min-width: 220px;
-    border-right: 1px solid #2d3150;
+    flex: 1;
+    border-right: none;
     display: flex;
     flex-direction: column;
     background: #13162b;
-    flex-shrink: 0;
+    min-width: 0;
+  }
+  #proc-panel.has-detail #proc-sidebar {
+    flex: 0 0 340px;
+    min-width: 220px;
+    border-right: 1px solid #2d3150;
   }
   #proc-sidebar-header {
-    padding: 10px 12px;
+    padding: 10px 14px;
     border-bottom: 1px solid #2d3150;
     display: flex;
     flex-direction: column;
@@ -536,6 +551,73 @@
   #proc-list::-webkit-scrollbar { width: 4px; }
   #proc-list::-webkit-scrollbar-track { background: transparent; }
   #proc-list::-webkit-scrollbar-thumb { background: #2d3150; border-radius: 2px; }
+
+  /* ── ACCORDÉON TYPES ── */
+  .type-group { margin-bottom: 4px; }
+  .type-group-header {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    transition: background .12s;
+    user-select: none;
+  }
+  .type-group-header:hover { background: #1a1d2e; }
+  .type-group-chevron {
+    font-size: 9px;
+    color: #4a5568;
+    width: 10px;
+    flex-shrink: 0;
+    transition: color .12s;
+  }
+  .type-group-header:hover .type-group-chevron { color: #a0aec0; }
+  .type-group-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: #c8d0ea;
+    flex: 1;
+  }
+  .type-group-count {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+  .type-group-body { margin-bottom: 4px; }
+  .type-group-item {
+    padding: 8px 14px 8px 30px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background .1s;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 1px 0;
+  }
+  .type-group-item:hover { background: #1a1d2e; }
+  .type-group-item.active { background: #1e2240; }
+  .type-group-item-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #e2e8f0;
+  }
+  .type-group-item.active .type-group-item-name { color: #a5b4fc; }
+  .type-group-item-desc {
+    font-size: 11px;
+    color: #4a5568;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .type-group-item-flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 2px;
+  }
 
   .proc-item {
     padding: 10px 12px;
@@ -680,10 +762,11 @@
 
   #proc-detail {
     flex: 1;
-    display: flex;
+    display: none; /* caché par défaut, affiché via .has-detail */
     flex-direction: column;
     overflow: hidden;
   }
+  #proc-panel.has-detail #proc-detail { display: flex; }
   #proc-empty {
     flex: 1;
     display: flex;
@@ -1030,7 +1113,7 @@
 
   /* ── MOBILE BACK BUTTON ── */
   #mobile-back-btn {
-    display: none;
+    display: flex; /* visible sur desktop et mobile */
     align-items: center;
     gap: 6px;
     padding: 8px 14px 0;
@@ -1042,6 +1125,7 @@
     border: none;
     background: none;
   }
+  #mobile-back-btn:hover { color: #a5b4fc; }
   #mobile-back-btn:active { opacity: .7; }
 
   /* ══════════════════════════════════════
@@ -1179,10 +1263,16 @@
   body.light .btn-secondary:hover { background:#c8d0ea; color:#1a1d2e; }
   body.light .sep { background:#c8d0ea; }
   body.light #zoom-info { color:#9098b8; }
-  body.light #tab-bar { background:#e8ecf8; border-bottom-color:#c8d0ea; }
-  body.light .tab-btn { color:#9098b8; }
-  body.light .tab-btn:hover { color:#5b6ad8; background:#dde3f5; }
-  body.light .tab-btn.active { color:#5b6ad8; border-bottom-color:#5b6ad8; background:#dde3f5; }
+  body.light #toolbar-dropdown { background:#f8faff; border-color:#c8d0ea; }
+  body.light .tbdrop-item { color:#3a4580; }
+  body.light .tbdrop-item:hover { background:#e8edfc; color:#1a1d2e; }
+  body.light .tbdrop-sep { background:#c8d0ea; }
+  body.light .type-group-header:hover { background:#e8edfc; }
+  body.light .type-group-label { color:#2a3060; }
+  body.light .type-group-item:hover { background:#e8edfc; }
+  body.light .type-group-item.active { background:#dde3f5; }
+  body.light .type-group-item-name { color:#1a1d2e; }
+  body.light .type-group-item-desc { color:#9098b8; }
   body.light #schema-panel, body.light #proc-panel { background:#f0f4ff; }
   body.light #schema-sidebar, body.light #proc-sidebar { background:#e8ecf8; border-right-color:#c8d0ea; }
   body.light #schema-sidebar-header, body.light #proc-sidebar-header { border-bottom-color:#c8d0ea; }
@@ -1299,8 +1389,11 @@
 <!-- TOOLBAR -->
 <div id="toolbar">
   <h1>⬡ SQL Schema</h1>
-  <!-- Schema tab buttons -->
-  <div id="toolbar-schema" style="display:flex;align-items:center;gap:10px;">
+
+  <!-- Schéma (caché par défaut, accessible via ⋯) -->
+  <div id="toolbar-schema" style="display:none;align-items:center;gap:8px;">
+    <button class="btn btn-secondary" onclick="switchTab('proc')" title="Retour aux procédures">← Procédures</button>
+    <div class="sep"></div>
     <button class="btn btn-primary" onclick="openAddTableModal()">+ Table</button>
     <button class="btn btn-secondary" onclick="openAddRelationModal()">⟶ Relation</button>
     <div class="sep"></div>
@@ -1310,20 +1403,30 @@
     <div class="sep"></div>
     <button class="btn btn-danger" onclick="clearAll()">✕ Vider</button>
   </div>
-  <!-- Procedures tab buttons -->
-  <div id="toolbar-proc" style="display:none;align-items:center;gap:10px;">
+
+  <!-- Procédures (affiché par défaut) -->
+  <div id="toolbar-proc" style="display:flex;align-items:center;gap:8px;">
     <button class="btn btn-primary" onclick="openAddProcModal()">+ Procédure</button>
-    <button class="btn btn-secondary" onclick="startScreenCapture()" title="Capturer des screenshots et créer une procédure ou les envoyer à Claude IA (touche 0)">📷 Capturer</button>
-    <button class="btn btn-secondary" onclick="openClaudeAIModal()" title="Analyser une photo avec Claude IA et importer directement">🤖 Claude IA</button>
-    <button class="btn btn-secondary" onclick="openPromptModal()" title="Obtenir le prompt à copier dans Claude pour import manuel">📋 Prompt</button>
-    <div class="sep"></div>
-    <button class="btn btn-secondary" id="toolbar-proc-json-btn" onclick="exportProcsJSON()" title="Exporte la procédure sélectionnée, le résultat filtré, ou toutes les procédures">⬇ JSON</button>
-    <button class="btn btn-secondary" onclick="exportProcsSQL()">⬇ SQL</button>
-    <button class="btn btn-secondary" onclick="openExtractModal(null)" title="Extraire tables, champs et relations depuis les requêtes SQL">🔍 → Schéma</button>
-    <button class="btn btn-secondary" onclick="openImportProcsModal()">⬆ Import</button>
+    <button class="btn btn-secondary" onclick="startScreenCapture()" title="Capturer des screenshots (touche 0)">📷 Capturer</button>
+    <div style="position:relative;">
+      <button class="btn btn-secondary" id="toolbar-more-btn" onclick="toggleToolbarMenu(event)" title="Plus d'options">⋯</button>
+      <div id="toolbar-dropdown">
+        <div class="tbdrop-item" onclick="openClaudeAIModal();closeToolbarMenu()">🤖 Claude IA</div>
+        <div class="tbdrop-item" onclick="openPromptModal();closeToolbarMenu()">📋 Prompt</div>
+        <div class="tbdrop-sep"></div>
+        <div class="tbdrop-item" id="tbdrop-json-btn" onclick="exportProcsJSON();closeToolbarMenu()">⬇ Exporter JSON</div>
+        <div class="tbdrop-item" onclick="exportProcsSQL();closeToolbarMenu()">⬇ Exporter SQL</div>
+        <div class="tbdrop-item" onclick="openImportProcsModal();closeToolbarMenu()">⬆ Importer</div>
+        <div class="tbdrop-sep"></div>
+        <div class="tbdrop-item" onclick="openExtractModal(null);closeToolbarMenu()">🔍 Extraire → Schéma</div>
+        <div class="tbdrop-sep"></div>
+        <div class="tbdrop-item" onclick="switchTab('schema');closeToolbarMenu()">▦ Voir le schéma</div>
+      </div>
+    </div>
   </div>
-  <span id="zoom-info" style="margin-left:auto;">Zoom: 100% | Tables: 0</span>
-  <div id="theme-switch" onclick="toggleLightMode()" title="Mode clair / sombre">
+
+  <span id="zoom-info" style="display:none;">Zoom: 100% | Tables: 0</span>
+  <div id="theme-switch" onclick="toggleLightMode()" title="Mode clair / sombre" style="margin-left:auto;">
     <span id="theme-switch-icon">🌙</span>
     <div id="theme-switch-track"><div id="theme-switch-thumb"></div></div>
     <span style="font-size:13px;">☀️</span>
@@ -1373,24 +1476,10 @@
   <!-- Sidebar list -->
   <div id="proc-sidebar">
     <div id="proc-sidebar-header">
-      <input type="text" id="proc-search" placeholder="🔍 Rechercher..." oninput="filterProcs()" />
-      <div class="sidebar-filter-row">
-        <select id="proc-filter-type" class="sidebar-filter-sel" onchange="filterProcs()">
-          <option value="">Tous les types</option>
-          <option value="PROCEDURE">Procédure</option>
-          <option value="REQUETE">Requête SQL</option>
-          <option value="CI">CI</option>
-          <option value="EXCEL">Excel</option>
-          <option value="DATADICTIONARY">Datadictionary</option>
-          <option value="MODULE_REFERENTIEL">Module Référentiel</option>
-          <option value="MUREX">Murex</option>
-          <option value="PRICESELECTION">Priceselection</option>
-          <option value="ID_MDP">ID et MDP</option>
-        </select>
-        <select id="proc-filter-flag" class="sidebar-filter-sel" onchange="filterProcs()">
-          <option value="">Tous les flags</option>
-        </select>
-      </div>
+      <input type="text" id="proc-search" placeholder="🔍 Rechercher une procédure..." oninput="filterProcs()" />
+      <!-- Filtres cachés — gardés pour compat JS -->
+      <select id="proc-filter-type" style="display:none;"></select>
+      <select id="proc-filter-flag" style="display:none;"></select>
     </div>
     <div id="proc-list">
       <!-- filled by JS -->
@@ -1992,13 +2081,20 @@ let ctxTableId = null;
 document.addEventListener('DOMContentLoaded', () => {
   restoreLightMode();
   loadFromStorage();
-  renderSchemaList();
   setupClaudeLogo();
   _initRelMenu();
-  document.addEventListener('click', closeContextMenu);
+  switchTab('proc'); // procédures par défaut
+  document.addEventListener('click', e => {
+    closeContextMenu();
+    // Ferme le dropdown toolbar si clic en dehors
+    if (!document.getElementById('toolbar-more-btn')?.contains(e.target) &&
+        !document.getElementById('toolbar-dropdown')?.contains(e.target)) {
+      closeToolbarMenu();
+    }
+  });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      closeAllModals(); closeContextMenu(); hideRelMenu();
+      closeAllModals(); closeContextMenu(); hideRelMenu(); closeToolbarMenu();
       if (_captureStream) hideCapturePanelOnly(); // cache le panel sans arrêter la capture
     }
     if (e.key === 'Delete' && selectedTable && currentTab === 'schema') deleteTable(selectedTable);
@@ -3046,20 +3142,19 @@ function escHtml(str) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 let selectedProcId = null;
-let currentTab = 'schema';
+let currentTab = 'proc';
 
 // ─── MOBILE HELPERS ────────────────────────────────────────────────────────
 function isMobile() { return window.innerWidth <= 768; }
 
 function mobileProcBack() {
+  selectedProcId = null;
+  document.getElementById('proc-panel').classList.remove('has-detail');
   document.getElementById('proc-sidebar').classList.remove('mob-hide');
   document.getElementById('proc-detail').classList.remove('mob-show');
-  selectedProcId = null;
-  renderProcList(
-    document.getElementById('proc-search').value,
-    document.getElementById('proc-filter-type').value,
-    document.getElementById('proc-filter-flag').value
-  );
+  document.getElementById('proc-view').classList.remove('active');
+  document.getElementById('proc-empty').style.display = '';
+  renderProcList(document.getElementById('proc-search').value);
   updateProcJsonBtnLabel();
 }
 
@@ -3096,15 +3191,22 @@ function copyPrompt() {
 // ─── TAB SWITCH ────────────────────────────────────────────────────────────
 function switchTab(tab) {
   currentTab = tab;
-  document.getElementById('tab-schema').classList.toggle('active', tab === 'schema');
-  document.getElementById('tab-proc').classList.toggle('active',   tab === 'proc');
   document.getElementById('schema-panel').style.display = tab === 'schema' ? 'flex' : 'none';
   document.getElementById('proc-panel').classList.toggle('active', tab === 'proc');
   document.getElementById('toolbar-schema').style.display = tab === 'schema' ? 'flex' : 'none';
   document.getElementById('toolbar-proc').style.display   = tab === 'proc'   ? 'flex' : 'none';
-  document.getElementById('zoom-info').style.display = 'none';
+  document.getElementById('zoom-info').style.display = tab === 'schema' ? 'inline' : 'none';
   if (tab === 'schema') renderSchemaList();
-  else renderProcList();
+  else renderProcList(document.getElementById('proc-search').value);
+}
+
+// ─── TOOLBAR DROPDOWN ──────────────────────────────────────────────────────
+function toggleToolbarMenu(e) {
+  e.stopPropagation();
+  document.getElementById('toolbar-dropdown').classList.toggle('open');
+}
+function closeToolbarMenu() {
+  document.getElementById('toolbar-dropdown').classList.remove('open');
 }
 
 // ─── FLAG COLORS ───────────────────────────────────────────────────────────
@@ -3145,91 +3247,142 @@ const PROC_TYPE_LABELS = {
 function procTypeLabel(type) { return PROC_TYPE_LABELS[type] || type; }
 function procTypeClass(type) { return 'type-' + (type||'').toLowerCase().replace(/[^a-z0-9]/g, '_'); }
 
-// ─── REFRESH FLAG FILTER DROPDOWN ──────────────────────────────────────────
-function refreshFlagFilter() {
-  const sel = document.getElementById('proc-filter-flag');
-  const current = sel.value;
-  const allFlags = new Set();
-  (schema.procedures||[]).forEach(p => (p.flags||[]).forEach(f => allFlags.add(f)));
-  sel.innerHTML = '<option value="">Tous les flags</option>';
-  [...allFlags].sort().forEach(f => {
-    const o = document.createElement('option');
-    o.value = f; o.textContent = '🏷 ' + f;
-    if (f === current) o.selected = true;
-    sel.appendChild(o);
-  });
+// ─── ACCORDÉON : état des groupes ouverts ─────────────────────────────────
+let _expandedTypes = new Set(
+  JSON.parse(localStorage.getItem('expanded_types') || '[]')
+);
+const PROC_TYPE_ORDER = [
+  'PROCEDURE','REQUETE','CI','EXCEL','DATADICTIONARY',
+  'MODULE_REFERENTIEL','MUREX','PRICESELECTION','ID_MDP'
+];
+const PROC_TYPE_COLORS = {
+  PROCEDURE:          '#63b3ed',
+  REQUETE:            '#68d391',
+  CI:                 '#fc8181',
+  EXCEL:              '#9ae6b4',
+  DATADICTIONARY:     '#d6bcfa',
+  MODULE_REFERENTIEL: '#fbd38d',
+  MUREX:              '#90cdf4',
+  PRICESELECTION:     '#e9d8fd',
+  ID_MDP:             '#a0aec0',
+};
+
+function toggleTypeGroup(type) {
+  if (_expandedTypes.has(type)) _expandedTypes.delete(type);
+  else _expandedTypes.add(type);
+  localStorage.setItem('expanded_types', JSON.stringify([..._expandedTypes]));
+  renderProcList(document.getElementById('proc-search').value);
 }
 
 // ─── RENDER PROC LIST ──────────────────────────────────────────────────────
-function renderProcList(filter = '', typeFilter = '', flagFilter = '') {
-  refreshFlagFilter();
+function renderProcList(filter = '') {
   const list = document.getElementById('proc-list');
   list.innerHTML = '';
   const procs = (schema.procedures || []).filter(p => {
-    const matchText = !filter || p.name.toLowerCase().includes(filter.toLowerCase()) ||
-      (p.description||'').toLowerCase().includes(filter.toLowerCase()) ||
-      (p.flags||[]).some(f => f.toLowerCase().includes(filter.toLowerCase()));
-    const matchType = !typeFilter || p.type === typeFilter;
-    const matchFlag = !flagFilter || (p.flags||[]).includes(flagFilter);
-    return matchText && matchType && matchFlag;
+    if (!filter) return true;
+    const q = filter.toLowerCase();
+    return p.name.toLowerCase().includes(q) ||
+      (p.description||'').toLowerCase().includes(q) ||
+      (p.flags||[]).some(f => f.toLowerCase().includes(q));
   });
 
   if (!procs.length) {
-    list.innerHTML = `<div style="color:#2d3150;font-size:12px;text-align:center;padding:24px;">
-      ${filter ? 'Aucun résultat' : 'Aucune procédure — cliquez sur + Procédure'}</div>`;
+    list.innerHTML = `<div style="color:#4a5568;font-size:12px;text-align:center;padding:32px 16px;">
+      ${filter ? 'Aucun résultat pour «&nbsp;' + escHtml(filter) + '&nbsp;»'
+               : 'Aucune procédure — cliquez sur <b>+ Procédure</b>'}</div>`;
     return;
   }
 
-  procs.forEach(proc => {
-    const item = document.createElement('div');
-    const typeClass = procTypeClass(proc.type);
-    const ptypeClass = 'ptype-' + (proc.type||'').toLowerCase().replace(/[^a-z0-9]/g, '_');
-    item.className = 'proc-item ' + ptypeClass + (selectedProcId === proc.id ? ' active' : '');
-    const params = (proc.parameters||[]).length;
-    const tables = (proc.tables||[]).length;
-    const flags = proc.flags || [];
-    item.innerHTML = `
-      <div class="proc-item-name">
-        <span class="proc-type-badge ${typeClass}">${escHtml(procTypeLabel(proc.type))}</span>
-        ${escHtml(proc.name)}
-      </div>
-      ${proc.description ? `<div class="proc-item-desc">${escHtml(proc.description)}</div>` : ''}
-      ${flags.length ? `<div class="proc-item-flags">${flags.map(f=>`<span class="flag-badge" style="${flagBadgeStyle(f)}">🏷 ${escHtml(f)}</span>`).join('')}</div>` : ''}
-      <div class="proc-item-meta">
-        ${params ? `<span class="proc-meta-tag">${params} param${params>1?'s':''}</span>` : ''}
-        ${tables ? `<span class="proc-meta-tag">${tables} table${tables>1?'s':''}</span>` : ''}
-      </div>
+  // Si recherche active → liste plate simple
+  if (filter) {
+    procs.forEach(proc => {
+      const item = document.createElement('div');
+      const color = PROC_TYPE_COLORS[proc.type] || '#718096';
+      item.className = 'type-group-item' + (selectedProcId === proc.id ? ' active' : '');
+      item.style.borderLeft = `3px solid ${color}`;
+      item.style.paddingLeft = '14px';
+      const flags = proc.flags || [];
+      item.innerHTML = `
+        <span class="type-group-item-name">${escHtml(proc.name)}</span>
+        ${proc.description ? `<span class="type-group-item-desc">${escHtml(proc.description)}</span>` : ''}
+        ${flags.length ? `<div class="type-group-item-flags">${flags.map(f=>`<span class="flag-badge" style="${flagBadgeStyle(f)}">🏷 ${escHtml(f)}</span>`).join('')}</div>` : ''}
+      `;
+      item.addEventListener('click', () => showProcDetail(proc.id));
+      list.appendChild(item);
+    });
+    return;
+  }
+
+  // Vue par défaut → accordéon par type
+  const groups = {};
+  procs.forEach(p => {
+    const t = p.type || 'AUTRE';
+    if (!groups[t]) groups[t] = [];
+    groups[t].push(p);
+  });
+  const orderedTypes = [
+    ...PROC_TYPE_ORDER.filter(t => groups[t]),
+    ...Object.keys(groups).filter(t => !PROC_TYPE_ORDER.includes(t))
+  ];
+
+  orderedTypes.forEach(type => {
+    const typeProcs = groups[type];
+    const isOpen    = _expandedTypes.has(type);
+    const color     = PROC_TYPE_COLORS[type] || '#718096';
+    const label     = procTypeLabel(type);
+
+    const group = document.createElement('div');
+    group.className = 'type-group';
+
+    const header = document.createElement('div');
+    header.className = 'type-group-header';
+    header.style.borderLeftColor = color;
+    header.innerHTML = `
+      <span class="type-group-chevron">${isOpen ? '▼' : '▶'}</span>
+      <span class="type-group-label">${escHtml(label)}</span>
+      <span class="type-group-count" style="background:${color}22;color:${color};">${typeProcs.length}</span>
     `;
-    item.addEventListener('click', () => showProcDetail(proc.id));
-    list.appendChild(item);
+    header.addEventListener('click', () => toggleTypeGroup(type));
+    group.appendChild(header);
+
+    if (isOpen) {
+      const body = document.createElement('div');
+      body.className = 'type-group-body';
+      typeProcs.forEach(proc => {
+        const item = document.createElement('div');
+        item.className = 'type-group-item' + (selectedProcId === proc.id ? ' active' : '');
+        const flags = proc.flags || [];
+        item.innerHTML = `
+          <span class="type-group-item-name">${escHtml(proc.name)}</span>
+          ${proc.description ? `<span class="type-group-item-desc">${escHtml(proc.description)}</span>` : ''}
+          ${flags.length ? `<div class="type-group-item-flags">${flags.map(f=>`<span class="flag-badge" style="${flagBadgeStyle(f)}">🏷 ${escHtml(f)}</span>`).join('')}</div>` : ''}
+        `;
+        item.addEventListener('click', () => showProcDetail(proc.id));
+        body.appendChild(item);
+      });
+      group.appendChild(body);
+    }
+
+    list.appendChild(group);
   });
 }
 
 function filterProcs() {
-  renderProcList(
-    document.getElementById('proc-search').value,
-    document.getElementById('proc-filter-type').value,
-    document.getElementById('proc-filter-flag').value
-  );
+  renderProcList(document.getElementById('proc-search').value);
   updateProcJsonBtnLabel();
 }
 
 // ─── UPDATE TOOLBAR JSON BUTTON LABEL ─────────────────────────────────────
 function updateProcJsonBtnLabel() {
-  const btn = document.getElementById('toolbar-proc-json-btn');
+  const btn = document.getElementById('tbdrop-json-btn');
   if (!btn) return;
-  const search     = (document.getElementById('proc-search')?.value || '').trim();
-  const typeFilter = document.getElementById('proc-filter-type')?.value || '';
-  const flagFilter = document.getElementById('proc-filter-flag')?.value || '';
+  const search = (document.getElementById('proc-search')?.value || '').trim();
   if (selectedProcId) {
-    btn.textContent = '⬇ JSON (proc.)';
-    btn.title = 'Exporte la procédure sélectionnée';
-  } else if (search || typeFilter || flagFilter) {
-    btn.textContent = '⬇ JSON (filtre)';
-    btn.title = 'Exporte le résultat du filtre actif';
+    btn.textContent = '⬇ Exporter JSON (procédure)';
+  } else if (search) {
+    btn.textContent = '⬇ Exporter JSON (résultat)';
   } else {
-    btn.textContent = '⬇ JSON';
-    btn.title = 'Exporte toutes les procédures';
+    btn.textContent = '⬇ Exporter JSON';
   }
 }
 
@@ -3239,18 +3392,15 @@ function showProcDetail(id) {
   const proc = (schema.procedures||[]).find(p => p.id === id);
   if (!proc) return;
 
-  renderProcList(
-    document.getElementById('proc-search').value,
-    document.getElementById('proc-filter-type').value,
-    document.getElementById('proc-filter-flag').value
-  );
+  renderProcList(document.getElementById('proc-search').value);
   updateProcJsonBtnLabel();
 
   document.getElementById('proc-empty').style.display = 'none';
   const view = document.getElementById('proc-view');
   view.classList.add('active');
 
-  // Mobile: switch from sidebar to detail
+  // Ouvre le panneau détail (desktop + mobile)
+  document.getElementById('proc-panel').classList.add('has-detail');
   if (isMobile()) {
     document.getElementById('proc-sidebar').classList.add('mob-hide');
     document.getElementById('proc-detail').classList.add('mob-show');
@@ -3272,6 +3422,7 @@ function showProcDetail(id) {
       schema.procedures = schema.procedures.filter(p => p.id !== id);
       selectedProcId = null;
       saveToStorage();
+      document.getElementById('proc-panel').classList.remove('has-detail');
       document.getElementById('proc-view').classList.remove('active');
       document.getElementById('proc-empty').style.display = '';
       renderProcList(document.getElementById('proc-search').value);
@@ -3725,20 +3876,14 @@ function exportProcsJSON() {
     exportSingleProcJSON(selectedProcId);
     return;
   }
-  // 2. Si un filtre est actif → exporte uniquement le résultat filtré
-  const search     = (document.getElementById('proc-search')?.value || '').trim();
-  const typeFilter = document.getElementById('proc-filter-type')?.value || '';
-  const flagFilter = document.getElementById('proc-filter-flag')?.value || '';
-  const hasFilter  = search || typeFilter || flagFilter;
-  if (hasFilter) {
+  // 2. Si une recherche texte est active → exporte uniquement le résultat
+  const search = (document.getElementById('proc-search')?.value || '').trim();
+  if (search) {
     const filtered = (schema.procedures || []).filter(p => {
-      const matchText = !search ||
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        (p.description||'').toLowerCase().includes(search.toLowerCase()) ||
-        (p.flags||[]).some(f => f.toLowerCase().includes(search.toLowerCase()));
-      const matchType = !typeFilter || p.type === typeFilter;
-      const matchFlag = !flagFilter || (p.flags||[]).includes(flagFilter);
-      return matchText && matchType && matchFlag;
+      const q = search.toLowerCase();
+      return p.name.toLowerCase().includes(q) ||
+        (p.description||'').toLowerCase().includes(q) ||
+        (p.flags||[]).some(f => f.toLowerCase().includes(q));
     });
     _embedCapturesForExport(filtered).then(embedded => {
       const blob = new Blob([JSON.stringify({ procedures: embedded }, null, 2)], {type:'application/json'});
