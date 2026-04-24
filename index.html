@@ -4280,7 +4280,9 @@ function renderClaudeThumbs() {
   document.getElementById('claude-photos-count').textContent =
     count === 0 ? '(0 photo — ajoutez-en plusieurs si la procédure est sur plusieurs écrans)'
     : count === 1 ? '(1 photo — ajoutez-en d\'autres si le SQL continue sur l\'écran suivant)'
-    : `(${count} photos — envoi groupé à Claude)`;
+    : count > MAX_PHOTOS_PER_BATCH
+      ? `(${count} photos — analyse automatique en ${Math.ceil(count/MAX_PHOTOS_PER_BATCH)} lots de ${MAX_PHOTOS_PER_BATCH})`
+      : `(${count} photos — envoi groupé à Claude)`;
 
   document.getElementById('claude-analyze-btn').disabled = count === 0;
 }
@@ -5147,6 +5149,126 @@ async function _extractCaptureImages(procedures) {
   return procedures;
 }
 
+// ─── ANALYSE PAR LOTS (> MAX_PHOTOS_PER_BATCH images) ──────────────────────
+const MAX_PHOTOS_PER_BATCH = 8;
+
+async function _analyzeWithClaudeBatched() {
+  const apiKey  = getApiKey();
+  const model   = getModel();
+  const modelLabel = model.includes('haiku') ? 'Haiku ⚡' : model.includes('sonnet') ? 'Sonnet 🧠' : 'Opus 💎';
+  const status  = document.getElementById('claude-status');
+  const analyzeBtn = document.getElementById('claude-analyze-btn');
+
+  const total   = _claudePhotos.length;
+  const batches = [];
+  for (let i = 0; i < total; i += MAX_PHOTOS_PER_BATCH)
+    batches.push(_claudePhotos.slice(i, i + MAX_PHOTOS_PER_BATCH));
+  const nb = batches.length;
+
+  const TIMEOUT_MS   = 90_000;
+  const MAX_RETRIES  = 2;
+  const RETRY_DELAYS = [8, 20];
+
+  const doCall = async (messageContent, batchLabel) => {
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const resp = await _fetchWithTimeout('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true'
+          },
+          body: JSON.stringify({ model, max_tokens: 4096, messages: [{ role: 'user', content: messageContent }] })
+        }, TIMEOUT_MS);
+
+        if (!resp.ok) {
+          let apiMsg = ''; try { const e = await resp.json(); apiMsg = e.error?.message || ''; } catch(_) {}
+          const err = new Error(apiMsg || `HTTP ${resp.status}`);
+          const info = _claudeErrorInfo(err, resp.status);
+          if (info.retryable && attempt < MAX_RETRIES) {
+            const d = RETRY_DELAYS[attempt];
+            for (let s = d; s > 0; s--) { status.textContent = `${batchLabel} — ${info.userMsg.replace('{s}', s)}`; await new Promise(r => setTimeout(r, 1000)); }
+            continue;
+          }
+          throw new Error(info.finalMsg);
+        }
+        const data = await resp.json();
+        let text = (data.content?.[0]?.text || '').trim();
+        const fence = text.match(/```(?:json)?\s*([\s\S]+?)\s*```/);
+        return fence ? fence[1].trim() : text;
+
+      } catch(err) {
+        const info = _claudeErrorInfo(err, null);
+        if (info.retryable && attempt < MAX_RETRIES) {
+          const d = RETRY_DELAYS[attempt];
+          for (let s = d; s > 0; s--) { status.textContent = `${batchLabel} — ${info.userMsg.replace('{s}', s)}`; await new Promise(r => setTimeout(r, 1000)); }
+          continue;
+        }
+        throw new Error(info.finalMsg);
+      }
+    }
+  };
+
+  let previousJSON = '';
+  for (let bi = 0; bi < nb; bi++) {
+    const batch = batches[bi];
+    const batchLabel = `⏳ Lot ${bi+1}/${nb} (${batch.length} images) avec ${modelLabel}`;
+    status.textContent = batchLabel + '…';
+
+    const imageBlocks = batch.map(p => ({
+      type: 'image', source: { type: 'base64', media_type: p.mime, data: p.base64 }
+    }));
+
+    let textInstruction;
+    if (bi === 0) {
+      // Premier lot : prompt normal
+      const promptText = getPromptText(_activePromptMode);
+      textInstruction = `Ces ${batch.length} images font partie d'une longue procédure découpée en ${nb} lots (lot 1/${nb}).\n\n` + promptText;
+    } else {
+      // Lots suivants : continuation
+      textInstruction = `Tu analysais une longue procédure MX3 découpée en ${nb} lots.\n\nRésultat des lots précédents :\n${previousJSON}\n\nVoici les images du lot ${bi+1}/${nb} (photos ${bi*MAX_PHOTOS_PER_BATCH+1} à ${Math.min((bi+1)*MAX_PHOTOS_PER_BATCH, total)} sur ${total} au total).\nContinue l'extraction en ajoutant la suite dans le champ "body". Règles :\n- Retourne le JSON complet mis à jour (tout le contenu précédent + la suite)\n- Ne génère PAS de nouveaux [CAPTURE:N] (texte uniquement pour la suite)\n- Conserve exactement le même format JSON`;
+    }
+
+    try {
+      previousJSON = await doCall([...imageBlocks, { type: 'text', text: textInstruction }], `Lot ${bi+1}/${nb}`);
+    } catch(e) {
+      status.textContent = `❌ Échec lot ${bi+1}/${nb} — ${e.message}`;
+      analyzeBtn.textContent = '🔍 Analyser avec Claude';
+      analyzeBtn.disabled = false;
+      return;
+    }
+    status.textContent = `✅ Lot ${bi+1}/${nb} terminé`;
+  }
+
+  // Post-traitement captures (lot 1 seulement, indices déjà corrects)
+  try {
+    const parsed = JSON.parse(previousJSON);
+    if (parsed.procedures && batches[0]) {
+      const firstBatchPhotos = _claudePhotos.slice(0, MAX_PHOTOS_PER_BATCH);
+      const savedPhotos = _claudePhotos;
+      _claudePhotos = firstBatchPhotos;
+      status.textContent = '⏳ Recadrage des captures…';
+      await _extractCaptureImages(parsed.procedures);
+      _claudePhotos = savedPhotos;
+      previousJSON = JSON.stringify(parsed, null, 2);
+    }
+  } catch(_) {}
+
+  document.getElementById('claude-result-text').value = previousJSON;
+  document.getElementById('claude-result-wrap').style.display = 'block';
+  document.getElementById('claude-import-btn').style.display = 'inline-flex';
+  status.textContent = `✅ Analyse terminée (${nb} lots) — vérifiez le JSON puis cliquez sur Importer`;
+  analyzeBtn.textContent = '🔄 Relancer';
+  analyzeBtn.disabled = false;
+  if (_autoImportAfterAnalysis) {
+    _autoImportAfterAnalysis = false;
+    status.textContent = '✅ Analyse terminée — import automatique…';
+    setTimeout(() => importClaudeResult(), 600);
+  }
+}
+
 async function analyzeWithClaude() {
   if (!_claudePhotos.length) return;
   const apiKey = getApiKey();
@@ -5158,6 +5280,12 @@ async function analyzeWithClaude() {
   analyzeBtn.textContent = '⏳ Envoi à Claude…';
   document.getElementById('claude-result-wrap').style.display = 'none';
   document.getElementById('claude-import-btn').style.display = 'none';
+
+  // Rediriger vers l'analyse par lots si trop d'images
+  if (_claudePhotos.length > MAX_PHOTOS_PER_BATCH) {
+    await _analyzeWithClaudeBatched();
+    return;
+  }
 
   const n = _claudePhotos.length;
   const promptText = getPromptText(_activePromptMode);
