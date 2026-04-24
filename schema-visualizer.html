@@ -4615,7 +4615,7 @@ function hideCapturePanelOnly() {
 }
 
 async function startScreenCapture() {
-  if (_captureStream) { // déjà actif → juste montrer le panel
+  if (_captureStream) { // stream déjà actif → juste rouvrir le panel
     document.getElementById('capture-panel').classList.add('active');
     _updateCaptureSourceUI();
     return;
@@ -4631,7 +4631,7 @@ async function startScreenCapture() {
     });
   } catch(e) {
     if (e.name !== 'NotAllowedError') console.error(e);
-    return; // utilisateur a annulé
+    return; // utilisateur a annulé ou refusé
   }
   // Crée un élément video silencieux pour lire le flux
   _captureVideo = document.createElement('video');
@@ -4639,14 +4639,18 @@ async function startScreenCapture() {
   _captureVideo.muted = true;
   await _captureVideo.play();
 
-  // Si l'utilisateur arrête via le bouton navigateur
+  // Si l'utilisateur arrête via le bouton du navigateur
   _captureStream.getVideoTracks()[0].addEventListener('ended', () => stopScreenCapture(false));
 
-  _captureShots = [];
+  // Ne PAS effacer _captureShots : si l'utilisateur avait fait ⏹ puis relance,
+  // ses captures précédentes sont conservées
   _renderCaptureThumbs();
   _updateCaptureSourceUI();
   document.getElementById('capture-panel').classList.add('active');
-  showToast('📷 Capture active — appuyez sur 0 pour capturer');
+  const msg = _captureShots.length
+    ? `📷 Capture reprise — ${_captureShots.length} capture${_captureShots.length>1?'s':''} conservée${_captureShots.length>1?'s':''}`
+    : '📷 Capture active — appuyez sur 0 pour capturer';
+  showToast(msg);
 }
 
 function takeScreenshot() {
@@ -4679,19 +4683,17 @@ function removeCapture(i) {
 
 function _renderCaptureThumbs() {
   const grid  = document.getElementById('capture-thumbs');
-  const hint  = document.getElementById('capture-empty-hint');
   const badge = document.getElementById('capture-count-badge');
   const n = _captureShots.length;
   badge.textContent = n === 0 ? '0 capture' : `${n} capture${n>1?'s':''}`;
+  // Toujours reconstruire le contenu (évite le bug hint.remove / getElementById null)
+  grid.innerHTML = '';
   if (n === 0) {
-    grid.innerHTML = '';
-    grid.appendChild(hint);
+    grid.innerHTML = `<span id="capture-empty-hint">Appuyez sur 📸 ou la touche <kbd style="background:#252840;border-radius:4px;padding:1px 6px;font-family:monospace;">0</kbd> pour capturer</span>`;
     document.getElementById('capture-to-proc-btn').disabled   = true;
     document.getElementById('capture-to-claude-btn').disabled = true;
     return;
   }
-  hint.remove();
-  grid.innerHTML = '';
   _captureShots.forEach((s, i) => {
     const wrap = document.createElement('div');
     wrap.className = 'cap-thumb';
