@@ -4097,38 +4097,70 @@ function resizeImageFile(file) {
       img.onerror = reject;
       img.onload = () => {
         let { naturalWidth: w, naturalHeight: h } = img;
-
-        // Calcule les nouvelles dimensions en gardant le ratio
         if (w > IMG_MAX_PX || h > IMG_MAX_PX) {
           if (w >= h) { h = Math.round(h * IMG_MAX_PX / w); w = IMG_MAX_PX; }
           else         { w = Math.round(w * IMG_MAX_PX / h); h = IMG_MAX_PX; }
         }
-
         const cvs = document.createElement('canvas');
-        cvs.width  = w;
-        cvs.height = h;
-        const ctx = cvs.getContext('2d');
-        ctx.drawImage(img, 0, 0, w, h);
-
-        // Toujours en JPEG pour maîtriser le poids (PNG source → JPEG envoyé)
+        cvs.width = w; cvs.height = h;
+        cvs.getContext('2d').drawImage(img, 0, 0, w, h);
         const dataUrl = cvs.toDataURL('image/jpeg', IMG_QUALITY);
         const b64     = dataUrl.split(',')[1];
-        const origKB  = Math.round(file.size / 1024);
-        const newKB   = Math.round(b64.length * 0.75 / 1024);
-
         resolve({
-          base64:  b64,
-          mime:    'image/jpeg',
-          dataUrl,
-          origSize: origKB,
-          newSize:  newKB,
-          origW: img.naturalWidth, origH: img.naturalHeight,
-          newW: w, newH: h
+          base64: b64, mime: 'image/jpeg', dataUrl,
+          origSize: Math.round(file.size / 1024), newKB: Math.round(b64.length * 0.75 / 1024),
+          origW: img.naturalWidth, origH: img.naturalHeight, newW: w, newH: h
         });
       };
       img.src = ev.target.result;
     };
     reader.readAsDataURL(file);
+  });
+}
+
+// Redimensionne depuis un dataUrl (pas besoin de File)
+function _resizeDataUrl(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onerror = reject;
+    img.onload = () => {
+      let { naturalWidth: w, naturalHeight: h } = img;
+      const origW = w, origH = h;
+      if (w > IMG_MAX_PX || h > IMG_MAX_PX) {
+        if (w >= h) { h = Math.round(h * IMG_MAX_PX / w); w = IMG_MAX_PX; }
+        else         { w = Math.round(w * IMG_MAX_PX / h); h = IMG_MAX_PX; }
+      }
+      const cvs = document.createElement('canvas');
+      cvs.width = w; cvs.height = h;
+      cvs.getContext('2d').drawImage(img, 0, 0, w, h);
+      const out = cvs.toDataURL('image/jpeg', IMG_QUALITY);
+      const b64 = out.split(',')[1];
+      resolve({
+        base64: b64, mime: 'image/jpeg', dataUrl: out,
+        origW, origH, newW: w, newH: h,
+        origSize: Math.round(dataUrl.length * 0.75 / 1024),
+        newKB:    Math.round(b64.length * 0.75 / 1024)
+      });
+    };
+    img.src = dataUrl;
+  });
+}
+
+// Charge un dataUrl sans redimensionner
+function _loadDataUrl(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onerror = reject;
+    img.onload = () => {
+      const b64 = dataUrl.split(',')[1];
+      const kb  = Math.round(b64.length * 0.75 / 1024);
+      resolve({
+        base64: b64, mime: dataUrl.split(';')[0].split(':')[1] || 'image/jpeg',
+        dataUrl, origW: img.naturalWidth, origH: img.naturalHeight,
+        newW: img.naturalWidth, newH: img.naturalHeight, origSize: kb, newKB: kb
+      });
+    };
+    img.src = dataUrl;
   });
 }
 
@@ -4192,45 +4224,55 @@ function applyTextOptimization(dataUrl) {
 
 // ─── HQ TOGGLE ───────────────────────────────────────────────────────────────
 function onHQToggleChange(chk) {
-  const hq     = chk.checked;
-  const track  = document.getElementById('claude-hq-track');
-  const thumb  = document.getElementById('claude-hq-thumb');
-  const label  = document.getElementById('claude-hq-label');
-  const badge  = document.getElementById('claude-hq-badge');
-  track.style.background  = hq ? '#7c8cf8' : '#2d3150';
-  thumb.style.transform   = hq ? 'translateX(16px)' : 'translateX(0)';
-  thumb.style.background  = hq ? '#fff' : '#718096';
-  badge.style.display     = hq ? 'inline-block' : 'none';
-  label.innerHTML = hq
+  const hq = chk.checked;
+  document.getElementById('claude-hq-track').style.background = hq ? '#7c8cf8' : '#2d3150';
+  document.getElementById('claude-hq-thumb').style.transform  = hq ? 'translateX(16px)' : 'translateX(0)';
+  document.getElementById('claude-hq-thumb').style.background = hq ? '#fff' : '#718096';
+  document.getElementById('claude-hq-badge').style.display    = hq ? 'inline-block' : 'none';
+  document.getElementById('claude-hq-label').innerHTML = hq
     ? 'Haute qualité (sans compression) — <strong style="color:#f6ad55;">plus de tokens</strong>'
     : 'Compression activée — <strong style="color:#a0aec0;">économique</strong>';
-  // Vide les photos déjà chargées pour forcer un rechargement avec le bon mode
-  if (_claudePhotos.length) {
-    _claudePhotos = [];
-    renderClaudeThumbs();
-    document.getElementById('claude-status').textContent =
-      '⚠️ Mode changé — veuillez recharger vos photos';
-  }
+  if (_claudePhotos.length) _reprocessClaudePhotos();
 }
 
 function onOptToggleChange(chk) {
-  const on    = chk.checked;
-  const track = document.getElementById('claude-opt-track');
-  const thumb = document.getElementById('claude-opt-thumb');
-  const label = document.getElementById('claude-opt-label');
-  const badge = document.getElementById('claude-opt-badge');
-  track.style.background = on ? '#48bb78' : '#2d3150';
-  thumb.style.transform  = on ? 'translateX(16px)' : 'translateX(0)';
-  thumb.style.background = on ? '#fff' : '#718096';
-  badge.style.display    = on ? 'inline-block' : 'none';
-  label.innerHTML = on
+  const on = chk.checked;
+  document.getElementById('claude-opt-track').style.background = on ? '#48bb78' : '#2d3150';
+  document.getElementById('claude-opt-thumb').style.transform  = on ? 'translateX(16px)' : 'translateX(0)';
+  document.getElementById('claude-opt-thumb').style.background = on ? '#fff' : '#718096';
+  document.getElementById('claude-opt-badge').style.display    = on ? 'inline-block' : 'none';
+  document.getElementById('claude-opt-label').innerHTML = on
     ? 'Optimisation texte <strong style="color:#68d391;">activée</strong> — niveaux de gris · contraste · netteté'
     : 'Optimisation texte <strong style="color:#a0aec0;">désactivée</strong>';
-  if (_claudePhotos.length) {
-    _claudePhotos = [];
+  if (_claudePhotos.length) _reprocessClaudePhotos();
+}
+
+// Retraite toutes les photos depuis leur origDataUrl avec les réglages courants
+// → évite de perdre les captures quand on change un toggle
+async function _reprocessClaudePhotos() {
+  const hq  = document.getElementById('claude-hq-toggle').checked;
+  const opt = document.getElementById('claude-opt-toggle').checked;
+  const status = document.getElementById('claude-status');
+  status.textContent = '⏳ Application du mode…';
+  try {
+    const reprocessed = await Promise.all(_claudePhotos.map(async photo => {
+      const src = photo.origDataUrl || photo.dataUrl;
+      if (!src) return photo;
+      let p = await (hq ? _loadDataUrl(src) : _resizeDataUrl(src));
+      if (opt) {
+        const o = await applyTextOptimization(p.dataUrl);
+        p = { ...p, base64: o.base64, mime: o.mime, dataUrl: o.dataUrl, newKB: o.newKB };
+      }
+      p.origDataUrl = src;
+      return p;
+    }));
+    _claudePhotos = reprocessed;
     renderClaudeThumbs();
-    document.getElementById('claude-status').textContent =
-      '⚠️ Mode changé — veuillez recharger vos photos';
+    const modeTag = (hq ? ' · original' : ' · compressé') + (opt ? ' · texte+' : '');
+    status.textContent = `📷 ${_claudePhotos.length} photo(s)${modeTag} — cliquez sur Analyser`;
+  } catch(e) {
+    console.error('Reprocess error', e);
+    status.textContent = '❌ Erreur lors du retraitement';
   }
 }
 
@@ -4274,48 +4316,48 @@ function onClaudePhotosAdded(input) {
   const results = new Array(files.length);
 
   files.forEach((file, i) => {
-    // Étape 1 : chargement (resize ou original)
-    const loader = hq ? loadImageFileOriginal(file) : resizeImageFile(file);
+    // Lecture unique du fichier → origDataUrl conservé pour retraitement ultérieur
+    const reader = new FileReader();
+    reader.onerror = () => { done++; };
+    reader.onload = ev => {
+      const origDataUrl = ev.target.result;
 
-    // Étape 2 (optionnelle) : prétraitement texte
-    const pipeline = opt
-      ? loader.then(photo =>
-          applyTextOptimization(photo.dataUrl).then(optimized => ({
-            ...photo,
-            base64:  optimized.base64,
-            mime:    optimized.mime,
-            dataUrl: optimized.dataUrl,
-            newKB:   optimized.newKB
-          }))
-        )
-      : loader;
+      // Étape 1 : resize ou original
+      const step1 = hq ? _loadDataUrl(origDataUrl) : _resizeDataUrl(origDataUrl);
 
-    pipeline.then(photo => {
-      results[i] = photo;
-      done++;
-      if (done === files.length) {
-        results.filter(Boolean).forEach(p => _claudePhotos.push(p));
-        renderClaudeThumbs();
-        document.getElementById('claude-result-wrap').style.display = 'none';
-        document.getElementById('claude-import-btn').style.display  = 'none';
+      // Étape 2 (optionnelle) : prétraitement texte
+      const pipeline = opt
+        ? step1.then(photo =>
+            applyTextOptimization(photo.dataUrl).then(o => ({
+              ...photo, base64: o.base64, mime: o.mime, dataUrl: o.dataUrl, newKB: o.newKB
+            }))
+          )
+        : step1;
 
-        // Résumé : dimensions + poids + indicateurs de mode
-        const modeTag = (hq ? ' 🔓 original' : ' 🗜 compressé') + (opt ? ' 🔍 texte+' : '');
-        const info = results.filter(Boolean).map(p =>
-          p.origW !== p.newW
-            ? `${p.origW}×${p.origH}→${p.newW}×${p.newH} (${p.origSize}KB→${p.newKB}KB)`
-            : `${p.newW}×${p.newH} (${p.newKB}KB)`
-        ).join(' · ');
-
-        status.textContent =
-          `📷 ${_claudePhotos.length} photo(s) chargée(s)${modeTag} — ${info} — cliquez sur Analyser`;
-        input.value = '';
-      }
-    }).catch(err => {
-      console.error('Load error', err);
-      done++;
-      if (done === files.length && _claudePhotos.length) renderClaudeThumbs();
-    });
+      pipeline.then(photo => {
+        results[i] = { ...photo, origDataUrl };
+        done++;
+        if (done === files.length) {
+          results.filter(Boolean).forEach(p => _claudePhotos.push(p));
+          renderClaudeThumbs();
+          document.getElementById('claude-result-wrap').style.display = 'none';
+          document.getElementById('claude-import-btn').style.display  = 'none';
+          const modeTag = (hq ? ' 🔓 original' : ' 🗜 compressé') + (opt ? ' 🔍 texte+' : '');
+          const info = results.filter(Boolean).map(p =>
+            p.origW !== p.newW
+              ? `${p.origW}×${p.origH}→${p.newW}×${p.newH} (${p.origSize}KB→${p.newKB}KB)`
+              : `${p.newW}×${p.newH} (${p.newKB}KB)`
+          ).join(' · ');
+          status.textContent = `📷 ${_claudePhotos.length} photo(s) chargée(s)${modeTag} — ${info} — cliquez sur Analyser`;
+          input.value = '';
+        }
+      }).catch(err => {
+        console.error('Load error', err);
+        done++;
+        if (done === files.length && _claudePhotos.length) renderClaudeThumbs();
+      });
+    };
+    reader.readAsDataURL(file);
   });
 }
 
@@ -4742,7 +4784,7 @@ function captureToClaudeAI() {
   // renderClaudeThumbs est appelé dans openClaudeAIModal → mais _claudePhotos est réinitialisé !
   // On recharge après l'ouverture
   setTimeout(() => {
-    _claudePhotos = _captureShots.map(s => ({...s}));
+    _claudePhotos = _captureShots.map(s => ({ ...s, origDataUrl: s.dataUrl }));
     renderClaudeThumbs();
     document.getElementById('claude-status').textContent =
       `📷 ${_claudePhotos.length} capture${_claudePhotos.length>1?'s':''} chargée${_claudePhotos.length>1?'s':''} — choisissez le mode et cliquez sur Analyser`;
