@@ -882,6 +882,18 @@
   .sql-num  { color: #b794f4; }
   .sql-cmt  { color: #4a5568; font-style: italic; }
   .sql-type { color: #fc8181; }
+  /* ── Markdown tables ── */
+  .md-table-wrap { overflow-x: auto; margin: 8px 0; }
+  .md-table { border-collapse: collapse; font-size: 13px; min-width: 100%; }
+  .md-table th, .md-table td {
+    border: 1px solid #3d4470; padding: 5px 12px;
+    text-align: left; white-space: pre-wrap; word-break: break-word;
+  }
+  .md-table thead tr { background: #252846; }
+  .md-table th { color: #a0aec0; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .md-table tbody tr:nth-child(odd)  { background: #1a1d2e; }
+  .md-table tbody tr:nth-child(even) { background: #1e2135; }
+  .md-table tbody tr:hover { background: #2a2e4a; }
   /* ── Capture d'écran — panel flottant ── */
   #capture-panel {
     position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
@@ -1362,6 +1374,13 @@
   body.light .sql-num  { color:#7b4fb5; }
   body.light .sql-cmt  { color:#9098b8; font-style:italic; }
   body.light .sql-type { color:#c53030; }
+  /* markdown tables – light mode */
+  body.light .md-table th, body.light .md-table td { border-color:#c8d0ea; }
+  body.light .md-table thead tr { background:#e8ecf8; }
+  body.light .md-table th { color:#4a5568; }
+  body.light .md-table tbody tr:nth-child(odd)  { background:#ffffff; }
+  body.light .md-table tbody tr:nth-child(even) { background:#f5f7ff; }
+  body.light .md-table tbody tr:hover { background:#eef1ff; }
   /* flags */
   body.light #flags-chips { background:#f0f4ff; border-color:#c8d0ea; }
   body.light #flag-new-input { background:#f0f4ff; border-color:#c8d0ea; color:#1a1d2e; }
@@ -3477,13 +3496,20 @@ function showProcDetail(id) {
 }
 
 // ─── RENDU DU CORPS DE PROCÉDURE (texte + captures imbriquées) ──────────────
+// Rendu d'un segment texte : tableaux Markdown en priorité, sinon highlight SQL
+function renderTextSegment(text) {
+  if (!text) return '';
+  const mdHtml = renderMarkdownTables(text);
+  return mdHtml !== null ? mdHtml : highlightSQL(text);
+}
+
 function renderProcBody(proc) {
   const body = proc.body || '';
   const captures = proc.captures || [];
 
-  // S'il n'y a pas de balises [CAPTURE:N], rendu SQL classique
+  // S'il n'y a pas de balises [CAPTURE:N], rendu texte/SQL classique
   if (!captures.length || !body.includes('[CAPTURE:')) {
-    return highlightSQL(body);
+    return renderTextSegment(body);
   }
 
   // Découpe le corps en segments texte / référence de capture
@@ -3492,7 +3518,7 @@ function renderProcBody(proc) {
   parts.forEach(part => {
     const m = part.match(/^\[CAPTURE:(\d+)\]$/);
     if (!m) {
-      if (part) html += highlightSQL(part);
+      if (part) html += renderTextSegment(part);
       return;
     }
     const cap = captures[parseInt(m[1])];
@@ -3534,6 +3560,60 @@ function renderProcBody(proc) {
 }
 
 // ─── SQL SYNTAX HIGHLIGHT (lightweight) ────────────────────────────────────
+// Convertit les blocs de tableau Markdown (| col | col |) en HTML <table>
+function renderMarkdownTables(text) {
+  if (!text.includes('|')) return null; // raccourci rapide
+
+  const lines = text.split('\n');
+  const out = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    // Détecte une ligne de tableau Markdown : commence et finit par |, au moins 2 |
+    if (/^\s*\|.*\|\s*$/.test(line)) {
+      // Collecte toutes les lignes du bloc
+      const block = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+        block.push(lines[i]);
+        i++;
+      }
+      // Sépare entête / séparateur / corps
+      const rows = block.map(l =>
+        l.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim())
+      );
+      const isSep = r => r.every(c => /^[-:]+$/.test(c));
+      let headerRow = null, bodyRows = [];
+      if (rows.length >= 2 && isSep(rows[1])) {
+        headerRow = rows[0];
+        bodyRows  = rows.slice(2);
+      } else {
+        bodyRows = rows;
+      }
+      // Génère le HTML
+      let html = '<div class="md-table-wrap"><table class="md-table">';
+      if (headerRow) {
+        html += '<thead><tr>' + headerRow.map(c => `<th>${escHtml(c)}</th>`).join('') + '</tr></thead>';
+      }
+      if (bodyRows.length) {
+        html += '<tbody>' + bodyRows.map(r =>
+          '<tr>' + r.map(c => `<td>${escHtml(c)}</td>`).join('') + '</tr>'
+        ).join('') + '</tbody>';
+      }
+      html += '</table></div>';
+      out.push(html);
+    } else {
+      out.push(escHtml(line));
+      i++;
+    }
+  }
+
+  // Retourne null si aucun tableau trouvé (toutes les lignes sont du texte normal)
+  const hasTable = out.some(l => l.startsWith('<div class="md-table-wrap">'));
+  if (!hasTable) return null;
+  return out.join('\n');
+}
+
 function highlightSQL(code) {
   // Extrait et protège les balises [📸 CAPTURE: ...] avant le highlight SQL
   // pour éviter que leurs contenus soient altérés par les regex de keywords.
@@ -4419,8 +4499,15 @@ RÈGLES ABSOLUES :
 - Si des tables, données ou systèmes sources sont cités, liste-les dans "tables"
 - "description" = résumé d'une ligne de ce que fait la procédure, si distinct du corps principal
 
+TABLEAUX SIMPLES DE DONNÉES :
+Si la procédure contient un tableau simple (lignes et colonnes de texte ou de chiffres, sans interface graphique complexe autour), transcris-le DIRECTEMENT en Markdown dans le "body" :
+| Colonne 1 | Colonne 2 | Colonne 3 |
+|-----------|-----------|-----------|
+| valeur    | valeur    | valeur    |
+Ne génère PAS de [CAPTURE:N] pour un tableau de données pur — le Markdown suffit et sera rendu correctement.
+
 CAPTURES D'ÉCRAN IMBRIQUÉES :
-Si la procédure contient des captures d'écran imbriquées (fenêtres logicielles, formulaires, interfaces, menus, messages, tableaux), pour chacune :
+Uniquement pour les éléments NON transcriptibles en texte (fenêtres logicielles, formulaires, interfaces graphiques, menus, messages d'erreur, diagrammes, graphiques) :
 1. Dans le "body", insère la balise [CAPTURE:N] (N = index commençant à 0) à l'emplacement EXACT dans le texte
 2. Dans le tableau "captures", décris chaque capture avec :
    - "desc" : description courte de ce que montre la capture
